@@ -7,7 +7,7 @@
 namespace ffc {
 // Address scope is descriptive route context only. It does not establish the
 // owner, physical location, or trust level of a network.
-enum class NetworkAddressScope { Private, CarrierGradeNat, LinkLocal, Loopback, Multicast, Public, Unknown };
+enum class NetworkAddressScope { Private, CarrierGradeNat, LinkLocal, Loopback, Multicast, SpecialUse, Public, Unknown };
 
 struct TracerouteHop {
     unsigned int number{0};

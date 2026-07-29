@@ -14,7 +14,11 @@
 #include "ffc/readiness.hpp"
 
 #include <cstdlib>
+#include <cmath>
+#include <cstdint>
 #include <iostream>
+#include <utility>
+#include <vector>
 
 namespace {
 int failures = 0;
@@ -25,6 +29,19 @@ public:
     ffc::CommandResult run(const std::vector<std::string>&) const override { return result_; }
 private:
     ffc::CommandResult result_;
+};
+class SequencedCommandRunner final : public ffc::CommandRunner {
+public:
+    explicit SequencedCommandRunner(std::vector<ffc::CommandResult> results) : results_(std::move(results)) {}
+    ffc::CommandResult run(const std::vector<std::string>& arguments) const override {
+        calls.push_back(arguments);
+        if (next_ == results_.size()) return {-1, {}, "unexpected command"};
+        return results_[next_++];
+    }
+    mutable std::vector<std::vector<std::string>> calls;
+private:
+    std::vector<ffc::CommandResult> results_;
+    mutable std::size_t next_{0};
 };
 }
 int main() {
@@ -55,8 +72,41 @@ int main() {
     expect(metadata.default_gateway == "192.0.2.1" && metadata.default_interface == "wlp0s20f3", "parses default route");
     const auto hops = ffc::parse_traceroute_hops("traceroute to 1.1.1.1 (1.1.1.1), 8 hops max\n 1  192.168.0.1  0.5 ms\n 2  100.93.189.130  14.2 ms\n 3  *\n 4  1.1.1.1  22.0 ms\n");
     expect(hops.size() == 3 && hops.front().scope == ffc::NetworkAddressScope::Private && hops.at(1).scope == ffc::NetworkAddressScope::CarrierGradeNat && hops.back().scope == ffc::NetworkAddressScope::Public, "classifies private and carrier-grade NAT traceroute hops");
+    const auto malformed_traceroute_hops = ffc::parse_traceroute_hops(" 1  not-an-ip  1.0 ms\n 2  2001:db8::1  2.0 ms\n 999999999999999999999  1.1.1.1  3.0 ms\n");
+    expect(malformed_traceroute_hops.size() == 1 && malformed_traceroute_hops.front().scope == ffc::NetworkAddressScope::SpecialUse, "rejects malformed numeric traceroute output while retaining valid special-use route data");
+    const auto corrupt_traceroute_hops = ffc::parse_traceroute_hops(" 0  1.1.1.1  1.0 ms\n -1  1.1.1.1  1.0 ms\n 3  \x1b[31m1.1.1.1  1.0 ms\n 4  8.8.8.8  1.0 ms\n");
+    expect(corrupt_traceroute_hops.size() == 1 && corrupt_traceroute_hops.front().number == 4, "rejects zero, negative, overflow, and control-byte traceroute hop data");
     const auto mtr_hops = ffc::parse_mtr_hops(" 1.|-- 192.168.0.1  0.0%     5  0.5  0.6  0.4  0.8  0.1\n 2.|-- 100.93.189.131  0.0%     5 12.0 12.6 11.9 13.2  0.5\n 3.|-- ??? 100.0     5  0.0  0.0  0.0  0.0  0.0\n11.|-- 1.1.1.1  0.0%     5 22.0 23.1 21.9 24.0  0.9\n");
     expect(mtr_hops.size() == 4 && mtr_hops.at(1).scope == ffc::NetworkAddressScope::CarrierGradeNat && mtr_hops.at(2).response_loss_percent == 100.0 && mtr_hops.back().scope == ffc::NetworkAddressScope::Public, "parses MTR response-loss data without treating intermediate loss as endpoint loss");
+    const auto malformed_mtr_hops = ffc::parse_mtr_hops(" 1.|-- 192.168.0.1 nan%\n 2.|-- 198.51.100.4 101.0%\n 3.|-- 1.1.1.1 -1.0%\n 4.|-- 1.1.1.1 0.0%\n");
+    expect(malformed_mtr_hops.size() == 1 && malformed_mtr_hops.front().number == 4, "rejects malformed, non-finite, and out-of-range MTR loss values");
+    const auto malformed_mtr_address_hops = ffc::parse_mtr_hops(" 1.|-- not-an-ip  0.0%\n 2.|-- ??? 100.0\n");
+    expect(malformed_mtr_address_hops.size() == 1 && malformed_mtr_address_hops.front().address == "???", "retains only MTR's explicit no-reply marker when a hop address is invalid");
+    const auto corrupt_mtr_hops = ffc::parse_mtr_hops(" 0.|-- 1.1.1.1  0.0%\n 1.|-- ??? 0.0%\n 2.|-- 1.1.1.1 1e2%\n 3.|-- 1.1.1.1 0x1p0%\n 4.|-- 8.8.8.8 100.0%\n");
+    expect(corrupt_mtr_hops.size() == 1 && corrupt_mtr_hops.front().number == 4 && corrupt_mtr_hops.front().response_loss_percent == 100.0, "accepts only valid MTR hop numbers, decimal loss fields, and timeout semantics");
+    expect(ffc::classify_network_address("0.0.0.0") == ffc::NetworkAddressScope::SpecialUse && ffc::classify_network_address("198.51.100.25") == ffc::NetworkAddressScope::SpecialUse && ffc::classify_network_address("2001:db8::1") == ffc::NetworkAddressScope::SpecialUse, "does not label documentation and special-use addresses as public routes");
+    expect(ffc::classify_network_address("::1") == ffc::NetworkAddressScope::Loopback && ffc::classify_network_address("fe80::1") == ffc::NetworkAddressScope::LinkLocal && ffc::classify_network_address("not-an-address") == ffc::NetworkAddressScope::Unknown, "classifies IPv6 and invalid route addresses conservatively");
+    expect(ffc::classify_network_address("::ffff:192.168.1.20") == ffc::NetworkAddressScope::Private && ffc::classify_network_address("::ffff:100.64.0.1") == ffc::NetworkAddressScope::CarrierGradeNat, "classifies IPv4-mapped IPv6 addresses by their embedded IPv4 scope");
+    expect(ffc::classify_network_address("10.255.255.255") == ffc::NetworkAddressScope::Private && ffc::classify_network_address("11.0.0.0") == ffc::NetworkAddressScope::Public && ffc::classify_network_address("172.15.255.255") == ffc::NetworkAddressScope::Public && ffc::classify_network_address("172.16.0.0") == ffc::NetworkAddressScope::Private && ffc::classify_network_address("172.31.255.255") == ffc::NetworkAddressScope::Private && ffc::classify_network_address("172.32.0.0") == ffc::NetworkAddressScope::Public, "honors private IPv4 range boundaries");
+    expect(ffc::classify_network_address("100.63.255.255") == ffc::NetworkAddressScope::Public && ffc::classify_network_address("100.64.0.0") == ffc::NetworkAddressScope::CarrierGradeNat && ffc::classify_network_address("100.127.255.255") == ffc::NetworkAddressScope::CarrierGradeNat && ffc::classify_network_address("100.128.0.0") == ffc::NetworkAddressScope::Public, "honors carrier-grade NAT range boundaries");
+    expect(ffc::classify_network_address("224.0.0.0") == ffc::NetworkAddressScope::Multicast && ffc::classify_network_address("239.255.255.255") == ffc::NetworkAddressScope::Multicast && ffc::classify_network_address("240.0.0.0") == ffc::NetworkAddressScope::SpecialUse && ffc::network_address_scope_label(ffc::NetworkAddressScope::SpecialUse) == "special-use address", "distinguishes multicast, special-use, and public route semantics");
+    SequencedCommandRunner basic_diagnostics_runner({{0, "first ping", {}}, {0, "second ping", {}}, {0, " 1  1.1.1.1  10.0 ms\n", {}}});
+    const auto basic_diagnostics = ffc::ConnectivityAssessment(basic_diagnostics_runner).inspect();
+    expect(basic_diagnostics.probes.size() == 2 && basic_diagnostics.traceroutes.size() == 1 && basic_diagnostics.traceroutes.front().completed && !basic_diagnostics.path_stability && basic_diagnostics_runner.calls.size() == 3, "runs only the basic bounded diagnostic plan by default");
+    expect(basic_diagnostics_runner.calls.at(0).front() == "ping" && basic_diagnostics_runner.calls.at(2).front() == "traceroute", "uses explicit non-shell diagnostic commands");
+    SequencedCommandRunner partial_route_runner({{0, "first ping", {}}, {0, "second ping", {}}, {0, " 1  192.168.0.1  1.0 ms\n", "route did not reach target"}});
+    const auto partial_route_diagnostics = ffc::ConnectivityAssessment(partial_route_runner).inspect();
+    expect(!partial_route_diagnostics.traceroutes.front().completed && partial_route_diagnostics.traceroutes.front().output.find("route did not reach target") != std::string::npos, "does not mistake a successful traceroute process for a completed route");
+    SequencedCommandRunner extended_diagnostics_runner({{0, "first ping", {}}, {0, "second ping", {}}, {0, " 1  1.1.1.1  10.0 ms\n", {}}, {0, " 1  8.8.8.8  10.0 ms\n", {}}, {0, " 1  9.9.9.9  10.0 ms\n", {}}, {0, " 1  208.67.222.222  10.0 ms\n", {}}});
+    const auto extended_diagnostics_report = ffc::ConnectivityAssessment(extended_diagnostics_runner).inspect(true, false);
+    expect(extended_diagnostics_report.traceroutes.size() == 4 && !extended_diagnostics_report.path_stability && extended_diagnostics_report.resolver_probes.empty() && extended_diagnostics_runner.calls.size() == 6, "extended diagnostics does not silently run advanced probes");
+    SequencedCommandRunner advanced_diagnostics_runner({{0, "first ping", {}}, {0, "second ping", {}}, {0, " 1  1.1.1.1  10.0 ms\n", {}}, {0, " 1  8.8.8.8  10.0 ms\n", {}}, {0, " 1  9.9.9.9  10.0 ms\n", {}}, {0, " 1  208.67.222.222  10.0 ms\n", {}}, {0, " 1.|-- 1.1.1.1  0.0%\n", {}}, {0, "status: NOERROR", {}}, {0, "status: NOERROR", {}}, {0, "status: NOERROR", {}}});
+    const auto advanced_diagnostics_report = ffc::ConnectivityAssessment(advanced_diagnostics_runner).inspect(false, true);
+    expect(advanced_diagnostics_report.traceroutes.size() == 4 && advanced_diagnostics_report.path_stability && advanced_diagnostics_report.path_stability->destination_observed && advanced_diagnostics_report.resolver_probes.size() == 3 && advanced_diagnostics_runner.calls.size() == 10, "advanced diagnostics adds the documented bounded probe plan");
+    expect(advanced_diagnostics_runner.calls.at(6).front() == "mtr" && advanced_diagnostics_runner.calls.at(7).front() == "dig", "advanced diagnostics invokes MTR and direct DNS only in advanced mode");
+    SequencedCommandRunner unavailable_tool_runner({{127, {}, "ping unavailable"}, {127, {}, "ping unavailable"}, {127, {}, "traceroute unavailable"}});
+    const auto unavailable_diagnostics = ffc::ConnectivityAssessment(unavailable_tool_runner).inspect();
+    expect(!unavailable_diagnostics.probes.front().command_available && !unavailable_diagnostics.traceroutes.front().command_available, "marks unavailable diagnostic tools without treating them as hostile network evidence");
     expect(ffc::is_valid_ip_address("203.0.113.5") && ffc::is_valid_ip_address("2001:db8::1") && !ffc::is_valid_ip_address("not-an-ip"), "validates public IP values");
     const auto ssh_port = ffc::identify_port_spec("22/tcp");
     const auto rdp_port = ffc::identify_port_spec("3389/TCP");
@@ -98,12 +148,44 @@ int main() {
     expect(extended_diagnostics.action == ffc::CommandAction::NetworkDiagnostics && extended_diagnostics.extended_diagnostics, "parses extended diagnostics command");
     const auto advanced_diagnostics = ffc::parse_command_line({"--network-diagnostics", "--advanced"});
     expect(advanced_diagnostics.action == ffc::CommandAction::NetworkDiagnostics && advanced_diagnostics.extended_diagnostics && advanced_diagnostics.advanced_diagnostics, "parses advanced diagnostics command");
+    expect(ffc::parse_command_line({"--network-diagnostics", "--extended", "extra"}).action == ffc::CommandAction::Invalid && ffc::parse_command_line({"--network-diagnostics", "--unknown"}).action == ffc::CommandAction::Invalid, "rejects unsupported diagnostic option combinations");
     const auto hostile_mode = ffc::parse_command_line({"--mode", "hostile"});
     expect(hostile_mode.action == ffc::CommandAction::Mode && hostile_mode.mode_to_set == ffc::OperatingMode::HostileNetwork, "parses hostile mode command");
     expect(ffc::parse_command_line({"--network-metadata", "--unexpected"}).action == ffc::CommandAction::Invalid, "rejects invalid command combinations");
     expect(ffc::parse_command_line({"--threat-assessment"}).action == ffc::CommandAction::ThreatAssessment, "parses threat assessment command");
+    bool parser_fuzz_invariants_hold = true;
+    std::uint32_t fuzz_state = 0x7f4a7c15U;
+    for (unsigned int sample = 0; sample < 1000U; ++sample) {
+        std::string noise;
+        const auto length = (fuzz_state % 257U) + 1U;
+        for (unsigned int index = 0; index < length; ++index) {
+            fuzz_state = fuzz_state * 1664525U + 1013904223U;
+            noise.push_back(static_cast<char>(fuzz_state & 0xffU));
+        }
+        for (const auto& hop : ffc::parse_traceroute_hops(noise)) parser_fuzz_invariants_hold = parser_fuzz_invariants_hold && hop.number > 0U && hop.scope != ffc::NetworkAddressScope::Unknown;
+        for (const auto& hop : ffc::parse_mtr_hops(noise)) parser_fuzz_invariants_hold = parser_fuzz_invariants_hold && hop.number > 0U && hop.response_loss_percent && std::isfinite(*hop.response_loss_percent) && *hop.response_loss_percent >= 0.0 && *hop.response_loss_percent <= 100.0 && (hop.address != "???" || *hop.response_loss_percent == 100.0) && (hop.address == "???" || hop.scope != ffc::NetworkAddressScope::Unknown);
+    }
+    const std::string oversized_corrupt_line(65536U, '\x1b');
+    parser_fuzz_invariants_hold = parser_fuzz_invariants_hold && ffc::parse_traceroute_hops(oversized_corrupt_line).empty() && ffc::parse_mtr_hops(oversized_corrupt_line).empty();
+    expect(parser_fuzz_invariants_hold, "maintains route-parser safety invariants across deterministic binary fuzz input");
+    const ffc::ProcessCommandRunner process_runner;
+    const auto empty_command_result = process_runner.run({});
+    const auto stderr_command_result = process_runner.run({"/bin/sh", "-c", "printf stdout; printf stderr >&2; exit 7"});
+    const auto missing_command_result = process_runner.run({"ffc-command-that-does-not-exist"});
+    const auto signaled_command_result = process_runner.run({"/bin/sh", "-c", "kill -TERM $$"});
+    const auto closed_input_result = process_runner.run_with_input({"/bin/sh", "-c", "exec 0<&-; sleep 0.05"}, std::string(128U * 1024U, 'x'));
+    const auto unread_input_result = process_runner.run_with_input({"/bin/sh", "-c", "sleep 0.05"}, std::string(128U * 1024U, 'x'));
+    const auto excessive_output_result = process_runner.run({"/bin/sh", "-c", "head -c 1048577 /dev/zero"});
+    expect(empty_command_result.exit_code == -1 && !empty_command_result.stderr_text.empty(), "rejects an empty process command safely");
+    expect(stderr_command_result.exit_code == 7 && stderr_command_result.stdout_text == "stdout" && stderr_command_result.stderr_text == "stderr", "captures independent stdout, stderr, and exit status");
+    expect(missing_command_result.exit_code == 127, "reports an unavailable executable without invoking a shell");
+    expect(signaled_command_result.exit_code == -1, "reports a child terminated by signal as a failed command");
+    expect(closed_input_result.exit_code == -1 && closed_input_result.stderr_text.find("did not accept all standard input") != std::string::npos, "survives and reports a child process that closes stdin before consuming input");
+    expect(unread_input_result.exit_code == -1 && unread_input_result.stderr_text.find("did not accept all standard input") != std::string::npos, "does not indefinitely block when a child keeps stdin open but never reads it");
+    expect(excessive_output_result.exit_code == -1 && excessive_output_result.stdout_text.size() == 1024U * 1024U && excessive_output_result.stderr_text.find("output exceeded 1 MiB safety limit") != std::string::npos, "terminates and bounds excessively noisy child processes");
     const ffc::TerminalUi plain_ui;
     expect(plain_ui.success_badge("READY") == "[ READY ]" && plain_ui.keycap("R") == "[ R ]", "keeps status badges legible without color");
+    expect(ffc::ReadinessCheck{}.level == ffc::CheckLevel::Info, "default-constructs readiness checks with a safe informational level");
     StubCommandRunner advisory_runner({0, R"([{"advisory_name":"FEDORA-test","references":[{"reference_id":"CVE-2026-1234"},{"reference_id":"CVE-2026-1234"},{"reference_id":"CVE-2025-9999"}]}])", {}});
     const auto advisory_report = ffc::SecurityAdvisoryInspector(advisory_runner).inspect();
     expect(advisory_report.query_succeeded && advisory_report.advisory_count == 1 && advisory_report.cves == std::vector<std::string>{"CVE-2025-9999", "CVE-2026-1234"}, "summarizes available CVE advisories");
