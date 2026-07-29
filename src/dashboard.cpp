@@ -2,6 +2,7 @@
 
 #include "ffc/readiness.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 namespace ffc {
@@ -14,11 +15,11 @@ std::string Dashboard::items_or_none(const std::vector<std::string>& items) {
 
 void Dashboard::show_status(const FirewallState& state) const {
     ui_.section("Firewall posture");
-    ui_.key_value("Firewalld", state.active ? ui_.success("ACTIVE") : ui_.danger("INACTIVE"));
-    ui_.key_value("Boot service", state.enabled ? ui_.success("ENABLED") : ui_.warning("NOT ENABLED"));
-    ui_.key_value("Panic mode", state.panic ? ui_.danger("ACTIVE") : ui_.success("OFF"));
-    ui_.key_value("Assessment mode", state.operating_mode == OperatingMode::HostileNetwork ? ui_.warning(to_string(state.operating_mode)) : ui_.muted(to_string(state.operating_mode)));
-    ui_.key_value("Permanent config", state.permanent_config_checked ? (state.permanent_config_valid ? ui_.success("VALID") : ui_.danger("INVALID")) : ui_.warning("NOT CHECKED"));
+    ui_.key_value("Firewalld", state.active ? ui_.success_badge("ACTIVE") : ui_.danger_badge("INACTIVE"));
+    ui_.key_value("Boot service", state.enabled ? ui_.success_badge("ENABLED") : ui_.warning_badge("NOT ENABLED"));
+    ui_.key_value("Panic mode", state.panic ? ui_.danger_badge("ACTIVE") : ui_.success_badge("OFF"));
+    ui_.key_value("Assessment mode", state.operating_mode == OperatingMode::HostileNetwork ? ui_.warning_badge("HOSTILE NETWORK") : ui_.neutral_badge("NORMAL"));
+    ui_.key_value("Permanent config", state.permanent_config_checked ? (state.permanent_config_valid ? ui_.success_badge("VALID") : ui_.danger_badge("INVALID")) : ui_.warning_badge("NOT CHECKED"));
     ui_.key_value("Default zone", state.default_zone.empty() ? ui_.warning("unknown") : ui_.accent(state.default_zone));
     ui_.key_value("Denied-packet logging", state.log_denied.empty() ? ui_.muted("unknown") : state.log_denied == "off" ? ui_.muted("off") : ui_.warning(state.log_denied));
     for (const auto& error : state.errors) ui_.key_value("Notice", ui_.warning(error));
@@ -149,6 +150,33 @@ void Dashboard::show_network_diagnostics(const NetworkDiagnostics& diagnostics) 
     std::cout << "\n  " << ui_.muted("Run only when you intend to generate diagnostic traffic; results do not identify an attacker or network type.") << '\n';
 }
 
+void Dashboard::show_security_advisories(const SecurityAdvisoryReport& report) const {
+    ui_.section("Available security advisories");
+    std::cout << "  " << ui_.muted("Explicit DNF5 query only; no packages, repositories, or firewall settings are changed.") << '\n';
+    if (!report.dnf_available) {
+        std::cout << "  " << ui_.danger_badge("DNF5 UNAVAILABLE") << " " << ui_.warning(report.diagnostic) << '\n';
+        return;
+    }
+    if (!report.query_succeeded) {
+        std::string detail = report.diagnostic;
+        for (auto& character : detail) if (static_cast<unsigned char>(character) < 32U || character == '\x7f') character = ' ';
+        if (detail.size() > 240) detail.resize(240);
+        std::cout << "  " << ui_.warning_badge("QUERY FAILED") << " " << ui_.warning(detail) << '\n';
+        return;
+    }
+    ui_.key_value("Available security advisories", report.advisory_count == 0 ? ui_.success_badge("NONE") : ui_.warning_badge(std::to_string(report.advisory_count)));
+    if (report.cves.empty()) {
+        ui_.key_value("Referenced CVEs", ui_.muted("none reported by available advisories"));
+        return;
+    }
+    constexpr std::size_t cve_limit = 20;
+    std::string cves;
+    for (std::size_t index = 0; index < std::min(report.cves.size(), cve_limit); ++index) cves += (cves.empty() ? "" : ", ") + report.cves[index];
+    if (report.cves.size() > cve_limit) cves += " … (" + std::to_string(report.cves.size() - cve_limit) + " more)";
+    ui_.key_value("Referenced CVEs", ui_.warning(cves));
+    std::cout << "\n  " << ui_.muted("Review the advisory and affected package before updating; a CVE reference is not proof of local exploitability.") << '\n';
+}
+
 void Dashboard::show_zones(const FirewallState& state, const std::string& title, ZoneView view) const {
     ui_.section(title);
     for (const auto& [name, zone] : state.runtime_zones) {
@@ -176,24 +204,25 @@ void Dashboard::show_zones(const FirewallState& state, const std::string& title,
 void Dashboard::show_readiness(const FirewallState& state) const {
     ui_.heading("DEF CON Firewall Readiness", "Read-only assessment — review warnings before connecting to hostile networks");
     for (const auto& check : assess_readiness(state)) {
-        const std::string result = check.level == CheckLevel::Pass ? ui_.success("PASS") : check.level == CheckLevel::Warn ? ui_.warning("WARN") : check.level == CheckLevel::Fail ? ui_.danger("FAIL") : ui_.muted("INFO");
+        const std::string result = check.level == CheckLevel::Pass ? ui_.success_badge("PASS") : check.level == CheckLevel::Warn ? ui_.warning_badge("WARN") : check.level == CheckLevel::Fail ? ui_.danger_badge("FAIL") : ui_.neutral_badge("INFO");
         std::cout << "  " << result << "  " << check.label << (check.detail.empty() ? "" : ui_.muted(" — " + check.detail)) << '\n';
     }
 }
 
 void Dashboard::show_menu(const FirewallState& state) const {
-    ui_.clear(); ui_.heading("DEF CON FIREWALL CONTROL", "v0.1.0  •  Read-only posture inspection"); show_status(state); show_overview(state); ui_.section("Choose an action");
-    std::cout << "  " << ui_.accent("[1]") << " Firewall service state          " << ui_.accent("[6]") << " Rich-rule count\n"
-              << "  " << ui_.accent("[2]") << " Default and active zones        " << ui_.accent("[7]") << " Forwarding and masquerading\n"
-              << "  " << ui_.accent("[3]") << " Interfaces and zone assignments " << ui_.accent("[8]") << " Runtime/permanent differences\n"
-              << "  " << ui_.accent("[4]") << " Allowed services                " << ui_.accent("[9]") << " DEF CON readiness report\n"
-              << "  " << ui_.accent("[5]") << " Explicit open ports             " << ui_.accent("[R]") << " Refresh state\n"
-              << "  " << ui_.accent("[L]") << " Network-reachable listeners\n"
-              << "  " << ui_.accent("[D]") << " Run ping and traceroute diagnostics (external traffic)\n"
-              << "  " << ui_.accent("[M]") << " Query public IP and save metadata (external request)\n"
-              << "  " << ui_.accent("[H]") << " View saved network metadata\n"
-              << "  " << ui_.accent("[0]") << " Exit\n";
-    ui_.rule(); std::cout << ui_.accent("Selection") << " > ";
+    ui_.clear(); ui_.heading("DEF CON FIREWALL CONTROL", "READ-ONLY POSTURE CONSOLE  //  THEME: " + ui_.theme_name()); show_status(state); show_overview(state); ui_.section("Command deck");
+    std::cout << "  " << ui_.keycap("1") << " Firewall service state          " << ui_.keycap("6") << " Rich-rule count\n"
+              << "  " << ui_.keycap("2") << " Default and active zones        " << ui_.keycap("7") << " Forwarding and masquerading\n"
+              << "  " << ui_.keycap("3") << " Interfaces and zone assignments " << ui_.keycap("8") << " Runtime/permanent differences\n"
+              << "  " << ui_.keycap("4") << " Allowed services                " << ui_.keycap("9") << " DEF CON readiness report\n"
+              << "  " << ui_.keycap("5") << " Explicit open ports             " << ui_.keycap("R") << " Refresh state\n"
+              << "  " << ui_.keycap("L") << " Network-reachable listeners\n"
+              << "  " << ui_.keycap("D") << " Run ping and traceroute diagnostics (external traffic)\n"
+              << "  " << ui_.keycap("S") << " Check available security advisories and CVEs\n"
+              << "  " << ui_.keycap("M") << " Query public IP and save metadata (external request)\n"
+              << "  " << ui_.keycap("H") << " View saved network metadata\n"
+              << "  " << ui_.keycap("0") << " Exit\n";
+    ui_.rule(); std::cout << ui_.accent("COMMAND") << " > ";
 }
 
 void Dashboard::show_detail_header() const { ui_.clear(); ui_.heading("DEF CON FIREWALL CONTROL", "Read-only detail view"); }

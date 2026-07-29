@@ -1,16 +1,14 @@
 #include "ffc/network_metadata.hpp"
+#include "ffc/secure_storage.hpp"
 
 #include <arpa/inet.h>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <regex>
 #include <sstream>
-#include <sys/stat.h>
 
 namespace ffc {
 namespace {
@@ -42,6 +40,10 @@ std::string json_string(const std::string& json, const std::string& name) {
 std::string json_number(const std::string& json, const std::string& name) {
     const std::regex pattern("\\\"" + name + "\\\"\\s*:\\s*([0-9]+)"); std::smatch match;
     return std::regex_search(json, match, pattern) ? match[1].str() : std::string{};
+}
+std::string history_field(std::string value) {
+    for (auto& character : value) if (character == '\t' || character == '\r' || character == '\n' || static_cast<unsigned char>(character) < 32U || character == '\x7f') character = ' ';
+    return value;
 }
 }
 
@@ -110,34 +112,21 @@ NetworkMetadata NetworkMetadataInspector::inspect(bool enrich) const {
 }
 
 std::string NetworkHistoryStore::path(std::string& error, bool create_directory) const {
-    const char* state_home = std::getenv("XDG_STATE_HOME");
-    const char* home = std::getenv("HOME");
-    std::filesystem::path directory;
-    if (state_home != nullptr && *state_home != '\0') directory = state_home;
-    else if (home != nullptr && *home != '\0') directory = std::filesystem::path(home) / ".local" / "state";
-    else { error = "HOME and XDG_STATE_HOME are unavailable"; return {}; }
-    directory /= "fedora-firewall-control";
-    if (create_directory) {
-        std::error_code code; std::filesystem::create_directories(directory, code);
-        if (code) { error = "could not create state directory: " + code.message(); return {}; }
-        chmod(directory.c_str(), S_IRWXU);
-    }
-    return (directory / "network-history.tsv").string();
+    return secure_local_path(LocalStorageArea::State, "network-history.tsv", create_directory, error);
 }
 
 bool NetworkHistoryStore::append(const NetworkMetadata& metadata, bool vpn_active, std::string& result) const {
     std::string error; const auto file_path = path(error, true); if (file_path.empty()) { result = error; return false; }
-    std::ofstream output(file_path, std::ios::app);
-    if (!output) { result = "could not write network history"; return false; }
-    output << metadata.observed_at_utc << '\t' << metadata.public_ip << '\t' << metadata.default_interface << '\t' << metadata.default_gateway << '\t' << metadata.connection_profile << '\t' << metadata.wifi_ssid << '\t' << metadata.wifi_bssid << '\t' << metadata.wifi_security << '\t' << metadata.country << '\t' << metadata.timezone << '\t' << metadata.isp << '\t' << metadata.autonomous_system << '\t' << (vpn_active ? "active" : "inactive") << '\n';
-    output.close(); chmod(file_path.c_str(), S_IRUSR | S_IWUSR); result = file_path; return true;
+    const std::string record = history_field(metadata.observed_at_utc) + '\t' + history_field(metadata.public_ip) + '\t' + history_field(metadata.default_interface) + '\t' + history_field(metadata.default_gateway) + '\t' + history_field(metadata.connection_profile) + '\t' + history_field(metadata.wifi_ssid) + '\t' + history_field(metadata.wifi_bssid) + '\t' + history_field(metadata.wifi_security) + '\t' + history_field(metadata.country) + '\t' + history_field(metadata.timezone) + '\t' + history_field(metadata.isp) + '\t' + history_field(metadata.autonomous_system) + '\t' + (vpn_active ? "active" : "inactive") + '\n';
+    if (!write_private_file(file_path, record, true, error)) { result = error; return false; }
+    result = file_path; return true;
 }
 
 bool NetworkHistoryStore::read_recent(std::vector<std::string>& records, std::string& result) const {
     std::string error; const auto file_path = path(error, false); if (file_path.empty()) { result = error; return false; }
-    std::ifstream input(file_path);
-    if (!input) { result = "no network metadata history yet"; return false; }
-    std::string line; while (std::getline(input, line)) if (!line.empty()) records.push_back(line);
+    std::string content;
+    if (!read_private_file(file_path, content, error)) { result = error == "No such file or directory" ? "no network metadata history yet" : error; return false; }
+    std::istringstream input(content); std::string line; while (std::getline(input, line)) if (!line.empty()) records.push_back(line);
     result = file_path; return true;
 }
 } // namespace ffc

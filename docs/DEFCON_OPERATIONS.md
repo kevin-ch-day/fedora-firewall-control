@@ -18,6 +18,8 @@ That explicit capture also records the active NetworkManager connection profile 
 
 For an explicit reachability and path test, run `./build/ffc --network-diagnostics`. It sends two ICMP echo requests to each of `1.1.1.1` and `8.8.8.8`, followed by a numeric traceroute to `1.1.1.1` limited to eight hops and one query per hop. This creates external traffic and is never part of the ordinary refresh. Timed-out probes or hops can be caused by normal filtering; they are evidence to compare across observations, not attacker attribution.
 
+Before travel and before joining a high-risk network, run `./build/ffc --security-advisories`. It asks DNF5 for available security advisories affecting the installed firewall, NetworkManager, kernel, TLS, D-Bus, PolicyKit, and related network packages. It only queries metadata and does not install anything. Treat reported CVEs as patch-review items rather than proof that the host is exploitable; review the advisory and package scope before deciding when to update.
+
 To enable Geo ipify enrichment, first run `./build/ffc --configure-ipify-key` and enter a replacement API key at the hidden terminal prompt. The app saves it in `$XDG_CONFIG_HOME/fedora-firewall-control/ipify.key` or `~/.config/fedora-firewall-control/ipify.key` with owner-only permissions; it is never printed or placed in the repository. An `FFC_IPIFY_API_KEY` environment variable takes precedence when a temporary or managed secret is preferred. Then `./build/ffc --network-metadata --enrich` spends one Geo ipify Country API credit to add country, timezone, ISP, and autonomous-system data. The key is passed to curl through standard input rather than a process argument. Do not use `--enrich` for routine refreshes.
 
 ## Assessment mode

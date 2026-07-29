@@ -2,7 +2,7 @@
 
 `ffc` is a defensive, read-only C++ terminal interface for inspecting Fedora's existing `firewalld` configuration. It does not replace firewalld, write nftables rules, reload the firewall, or change network configuration.
 
-Version 0.1.0 reports service state, zones, assigned interfaces, services, explicit ports, rich-rule counts, forwarding, masquerading, runtime/permanent drift, and a conservative readiness report. Its interactive dashboard uses ANSI color when attached to a terminal; set `NO_COLOR=1` for plain text, suitable for logs and accessibility tooling.
+Version 0.1.0 reports service state, zones, assigned interfaces, services, explicit ports, rich-rule counts, forwarding, masquerading, runtime/permanent drift, and a conservative readiness report. Its interactive dashboard uses ANSI color when attached to a terminal; the default `industrial` theme uses a high-contrast white, amber, and alarm-red console palette. Set `FFC_THEME=defcon` for the cyan DEF CON palette, `FFC_THEME=high-contrast` for a stronger blue/white palette, or `NO_COLOR=1` for plain text suitable for logs and accessibility tooling.
 
 ## Build and run
 
@@ -19,6 +19,8 @@ On Fedora, install the minimal build/runtime dependencies with `./scripts/setup-
 For a non-interactive report, run `./build/ffc --status`. For automation or CI checks, `./build/ffc --readiness` returns `0` for a clean assessment, `1` when review warnings exist, and `2` on a failed readiness check. Read operations normally work unprivileged, though local PolicyKit policy can affect what firewalld exposes.
 
 For an explicit connectivity check, `./build/ffc --network-diagnostics` sends two ICMP echo requests each to `1.1.1.1` and `8.8.8.8`, then runs a numeric traceroute to `1.1.1.1` with a maximum of eight hops and one query per hop. It never runs on a normal dashboard refresh. A lack of replies can be normal on restrictive networks and is not evidence of an attack.
+
+To review currently available security advisories affecting the local network and security stack, run `./build/ffc --security-advisories`. It performs an explicit, read-only DNF5 advisory query and lists CVE references when Fedora metadata provides them; it does not install updates. See [docs/HARDENING.md](docs/HARDENING.md) for the threat model and operational guidance.
 
 ## Safety model
 

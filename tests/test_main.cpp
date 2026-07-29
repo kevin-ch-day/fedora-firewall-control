@@ -4,13 +4,25 @@
 #include "ffc/network_metadata.hpp"
 #include "ffc/socket_inspector.hpp"
 #include "ffc/security_signals.hpp"
+#include "ffc/security_advisories.hpp"
+#include "ffc/terminal_ui.hpp"
 #include "ffc/vpn.hpp"
 #include "ffc/readiness.hpp"
 
 #include <cstdlib>
 #include <iostream>
 
-namespace { int failures = 0; void expect(bool value, const char* text) { if (!value) { std::cerr << "FAILED: " << text << '\n'; ++failures; } } }
+namespace {
+int failures = 0;
+void expect(bool value, const char* text) { if (!value) { std::cerr << "FAILED: " << text << '\n'; ++failures; } }
+class StubCommandRunner final : public ffc::CommandRunner {
+public:
+    explicit StubCommandRunner(ffc::CommandResult result) : result_(std::move(result)) {}
+    ffc::CommandResult run(const std::vector<std::string>&) const override { return result_; }
+private:
+    ffc::CommandResult result_;
+};
+}
 int main() {
     const auto zone = ffc::parse_zone_info("target: ACCEPT\ninterfaces: enp1s0 wlp2s0\nsources: 192.0.2.0/24\nservices: ssh dhcpv6-client\nports: 8080/tcp\nforward-ports:\n  port=8080:proto=tcp:toport=80\nmasquerade: yes\nforward: no\n  rule family=\"ipv4\" service name=\"ssh\" accept\n");
     expect(zone.target == "ACCEPT", "parses target"); expect(zone.interfaces.size() == 2, "parses interfaces"); expect(zone.sources.size() == 1, "parses sources"); expect(zone.services.size() == 2, "parses services"); expect(zone.ports == std::vector<std::string>{"8080/tcp"}, "parses ports"); expect(zone.forward_ports.size() == 1, "parses forward ports"); expect(zone.masquerade && !zone.forward, "parses booleans"); expect(zone.rich_rules.size() == 1, "counts rich rules");
@@ -31,6 +43,11 @@ int main() {
     expect(metadata.default_gateway == "192.0.2.1" && metadata.default_interface == "wlp0s20f3", "parses default route");
     expect(ffc::is_valid_ip_address("203.0.113.5") && ffc::is_valid_ip_address("2001:db8::1") && !ffc::is_valid_ip_address("not-an-ip"), "validates public IP values");
     expect(ffc::is_valid_ipify_api_key("at_example_key-123") && !ffc::is_valid_ipify_api_key("") && !ffc::is_valid_ipify_api_key("contains a space"), "validates Geo ipify key format");
+    const ffc::TerminalUi plain_ui;
+    expect(plain_ui.success_badge("READY") == "[ READY ]" && plain_ui.keycap("R") == "[ R ]", "keeps status badges legible without color");
+    StubCommandRunner advisory_runner({0, R"([{"advisory_name":"FEDORA-test","references":[{"reference_id":"CVE-2026-1234"},{"reference_id":"CVE-2026-1234"},{"reference_id":"CVE-2025-9999"}]}])", {}});
+    const auto advisory_report = ffc::SecurityAdvisoryInspector(advisory_runner).inspect();
+    expect(advisory_report.query_succeeded && advisory_report.advisory_count == 1 && advisory_report.cves == std::vector<std::string>{"CVE-2025-9999", "CVE-2026-1234"}, "summarizes available CVE advisories");
     ffc::FirewallState state; state.installed = state.active = state.enabled = state.permanent_config_checked = state.permanent_config_valid = true; state.default_zone = "public"; state.runtime_zones["public"] = zone; state.permanent_zones["public"] = zone; state.active_zone_interfaces = active_zones; state.active_zone_sources = active_sources;
     const auto checks = ffc::assess_readiness(state); bool found_masquerade = false, found_accept = false; for (const auto& check : checks) { if (check.label == "masquerading disabled") found_masquerade = check.level == ffc::CheckLevel::Warn; if (check.label == "active zone target") found_accept = check.level == ffc::CheckLevel::Fail; }
     expect(found_masquerade, "flags masquerading"); expect(found_accept, "flags ACCEPT target"); return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

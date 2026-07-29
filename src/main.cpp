@@ -12,6 +12,7 @@
 #include "ffc/credentials.hpp"
 #include "ffc/operating_mode.hpp"
 #include "ffc/posture_inspector.hpp"
+#include "ffc/security_advisories.hpp"
 
 int main(int argc, char** argv) {
     ffc::ProcessCommandRunner runner;
@@ -25,9 +26,10 @@ int main(int argc, char** argv) {
     ffc::NetworkHistoryStore network_history;
     ffc::NetworkEvidenceService network_evidence(network_metadata, network_history);
     ffc::NetworkDiagnosticsInspector network_diagnostics(runner);
+    ffc::SecurityAdvisoryInspector security_advisories(runner);
     ffc::OperatingModeStore operating_mode;
     ffc::PostureInspector posture(backend, network_manager, vpn, sockets, security_signals, operating_mode);
     ffc::TerminalUi ui;
     ffc::Dashboard dashboard(ui);
-    return ffc::Application(posture, network_evidence, network_diagnostics, ipify_credentials, operating_mode, dashboard).run(argc, argv);
+    return ffc::Application(posture, network_evidence, network_diagnostics, security_advisories, ipify_credentials, operating_mode, dashboard).run(argc, argv);
 }

@@ -27,8 +27,8 @@ bool prompt_for_ipify_key(std::string& key, std::string& error) {
 }
 } // namespace
 
-Application::Application(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard)
-    : posture_(posture), network_evidence_(network_evidence), network_diagnostics_(network_diagnostics), ipify_credentials_(ipify_credentials), operating_mode_(operating_mode), dashboard_(dashboard) {}
+Application::Application(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard)
+    : posture_(posture), network_evidence_(network_evidence), network_diagnostics_(network_diagnostics), security_advisories_(security_advisories), ipify_credentials_(ipify_credentials), operating_mode_(operating_mode), dashboard_(dashboard) {}
 
 void Application::refresh() { state_ = posture_.inspect(); }
 
@@ -42,12 +42,13 @@ int Application::readiness_exit_code() const {
 }
 
 void Application::print_usage() {
-    std::cout << "Usage: ffc [--status | --readiness | --listeners | --network-diagnostics | --network-metadata [--enrich] | --network-history | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
+    std::cout << "Usage: ffc [--status | --readiness | --listeners | --network-diagnostics | --security-advisories | --network-metadata [--enrich] | --network-history | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
               << "Without an option, opens the interactive read-only dashboard.\n"
               << "  --status     Print firewall posture and exposure summary.\n"
               << "  --readiness  Print readiness checks (exit: 0 pass, 1 warning, 2 fail).\n"
               << "  --listeners  Print non-loopback local listening sockets.\n"
               << "  --network-diagnostics  Run bounded ping and traceroute tests (external traffic).\n"
+              << "  --security-advisories  Query available DNF5 security advisories and CVE references.\n"
               << "  --network-metadata [--enrich]  Query public-IP and save route metadata; enrichment uses one ipify credit.\n"
               << "  --network-history   Print locally saved public-IP and route metadata.\n"
               << "  --configure-ipify-key  Prompt for and securely save a Geo ipify API key.\n"
@@ -71,6 +72,9 @@ int Application::run_interactive() {
         }
         if (choice == "d" || choice == "D") {
             dashboard_.show_detail_header(); dashboard_.show_network_diagnostics(network_diagnostics_.inspect()); dashboard_.pause(); continue;
+        }
+        if (choice == "s" || choice == "S") {
+            dashboard_.show_detail_header(); dashboard_.show_security_advisories(security_advisories_.inspect()); dashboard_.pause(); continue;
         }
         dashboard_.show_detail_header();
         if (choice == "1") dashboard_.show_status(state_);
@@ -112,11 +116,15 @@ int Application::run(int argc, char** argv) {
     if (argc > 2) { print_usage(); return 2; }
     if (argc == 2 && std::string(argv[1]) == "--help") { print_usage(); return 0; }
     if (argc == 2 && std::string(argv[1]) == "--mode") { std::cout << "Assessment mode: " << to_string(operating_mode_.load()) << '\n'; return 0; }
-    if (argc == 2 && std::string(argv[1]) != "--status" && std::string(argv[1]) != "--readiness" && std::string(argv[1]) != "--listeners" && std::string(argv[1]) != "--network-diagnostics" && std::string(argv[1]) != "--network-metadata" && std::string(argv[1]) != "--network-history") { print_usage(); return 2; }
+    if (argc == 2 && std::string(argv[1]) != "--status" && std::string(argv[1]) != "--readiness" && std::string(argv[1]) != "--listeners" && std::string(argv[1]) != "--network-diagnostics" && std::string(argv[1]) != "--security-advisories" && std::string(argv[1]) != "--network-metadata" && std::string(argv[1]) != "--network-history") { print_usage(); return 2; }
     if (argc == 2 && std::string(argv[1]) == "--network-diagnostics") {
         const auto diagnostics = network_diagnostics_.inspect(); dashboard_.show_network_diagnostics(diagnostics);
         const bool all_commands_available = diagnostics.traceroute_command_available && std::all_of(diagnostics.probes.begin(), diagnostics.probes.end(), [](const ReachabilityProbe& probe) { return probe.command_available; });
         return all_commands_available ? 0 : 2;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--security-advisories") {
+        const auto report = security_advisories_.inspect(); dashboard_.show_security_advisories(report);
+        return report.query_succeeded ? 0 : 2;
     }
     refresh();
     if (argc == 2 && std::string(argv[1]) == "--status") { dashboard_.show_status(state_); dashboard_.show_overview(state_); return state_.installed ? 0 : 2; }

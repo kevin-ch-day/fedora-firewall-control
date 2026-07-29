@@ -13,6 +13,7 @@ Application
 ├── NetworkEvidenceService       explicit metadata capture and local-history persistence
 │   └── NetworkMetadataInspector public-IP lookup and local route metadata
 ├── NetworkDiagnosticsInspector  explicit bounded ping and traceroute checks
+├── SecurityAdvisoryInspector     explicit DNF5 query for available security advisories
 ├── IpifyCredentialStore         local owner-only credential or environment override
 ├── readiness                   pure posture evaluation
 └── Dashboard → TerminalUi       presentation only

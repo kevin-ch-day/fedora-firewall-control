@@ -21,6 +21,8 @@ add_library(ffc_core
     src/readiness.cpp
     src/socket_inspector.cpp
     src/security_signals.cpp
+    src/security_advisories.cpp
+    src/secure_storage.cpp
     src/terminal_ui.cpp
     src/vpn.cpp
 )

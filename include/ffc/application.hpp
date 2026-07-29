@@ -6,6 +6,7 @@
 #include "ffc/credentials.hpp"
 #include "ffc/operating_mode.hpp"
 #include "ffc/posture_inspector.hpp"
+#include "ffc/security_advisories.hpp"
 
 #include <string>
 
@@ -14,13 +15,14 @@ namespace ffc {
 // workflows belong in separate transaction classes in later releases.
 class Application {
 public:
-    Application(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard);
+    Application(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard);
     int run(int argc, char** argv);
 
 private:
     const PostureInspector& posture_;
     const NetworkEvidenceService& network_evidence_;
     const NetworkDiagnosticsInspector& network_diagnostics_;
+    const SecurityAdvisoryInspector& security_advisories_;
     const IpifyCredentialStore& ipify_credentials_;
     OperatingModeStore& operating_mode_;
     Dashboard& dashboard_;
