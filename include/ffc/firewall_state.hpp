@@ -4,6 +4,7 @@
 #include "ffc/vpn.hpp"
 #include "ffc/socket_inspector.hpp"
 #include "ffc/security_signals.hpp"
+#include "ffc/evidence_quality.hpp"
 #include "ffc/operating_mode.hpp"
 
 #include <map>
@@ -40,6 +41,7 @@ struct FirewallState {
     VpnState vpn;
     SocketState sockets;
     SecuritySignalsState security_signals;
+    EvidenceQualityState evidence_quality;
     std::map<std::string, ZoneState> runtime_zones;
     std::map<std::string, ZoneState> permanent_zones;
     std::vector<std::string> errors;
@@ -51,4 +53,7 @@ std::map<std::string, std::vector<std::string>> parse_active_zones(const std::st
 std::map<std::string, std::vector<std::string>> parse_active_zone_sources(const std::string& text);
 std::vector<std::string> parse_active_policy_names(const std::string& text);
 bool zone_configurations_equal(const ZoneState& left, const ZoneState& right);
+// NetworkManager commonly assigns interfaces at runtime, so operational policy
+// drift is evaluated separately from interface membership.
+bool zone_policies_equal(const ZoneState& left, const ZoneState& right);
 } // namespace ffc

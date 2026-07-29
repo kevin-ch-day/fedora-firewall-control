@@ -1,24 +1,19 @@
 #pragma once
 
-#include "ffc/firewall_state.hpp"
-#include "ffc/network_metadata.hpp"
-#include "ffc/network_diagnostics.hpp"
-#include "ffc/security_advisories.hpp"
+#include "ffc/posture_renderer.hpp"
+#include "ffc/network_renderer.hpp"
 #include "ffc/terminal_ui.hpp"
 
 #include <string>
-#include <vector>
-
 namespace ffc {
-enum class ZoneView { All, Interfaces, Services, Ports, RichRules, Routing, Drift };
-
-// Presents FirewallState without owning inspection or command-loop behavior.
-class Dashboard {
+// Operations display façade for menu/chrome plus focused renderer modules.
+class OperationsDashboard {
 public:
-    explicit Dashboard(TerminalUi& ui) : ui_(ui) {}
+    explicit OperationsDashboard(TerminalUi& ui) : ui_(ui), posture_(ui), network_(ui) {}
     void show_status(const FirewallState& state) const;
     void show_overview(const FirewallState& state) const;
     void show_listeners(const FirewallState& state) const;
+    void show_threat_assessment(const FirewallState& state) const;
     void show_network_metadata(const NetworkMetadata& metadata, const std::string& history_path) const;
     void show_network_history(const std::vector<std::string>& records, const std::string& history_path) const;
     void show_network_diagnostics(const NetworkDiagnostics& diagnostics) const;
@@ -33,6 +28,8 @@ public:
 
 private:
     TerminalUi& ui_;
-    static std::string items_or_none(const std::vector<std::string>& items);
+    PostureRenderer posture_;
+    NetworkRenderer network_;
 };
+using Dashboard = OperationsDashboard; // Compatibility name for early integrations.
 } // namespace ffc

@@ -8,7 +8,7 @@ std::string output_or_error(const CommandResult& result) {
 }
 } // namespace
 
-NetworkDiagnostics NetworkDiagnosticsInspector::inspect() const {
+NetworkDiagnostics ConnectivityAssessment::inspect() const {
     NetworkDiagnostics diagnostics;
     for (const std::string destination : {"1.1.1.1", "8.8.8.8"}) {
         const auto result = runner_.run({"ping", "-n", "-c", "2", "-W", "2", destination});

@@ -85,4 +85,9 @@ bool zone_configurations_equal(const ZoneState& a, const ZoneState& b) {
     return a.target == b.target && a.interfaces == b.interfaces && a.sources == b.sources && a.services == b.services && a.ports == b.ports && a.rich_rules == b.rich_rules && a.forward_ports == b.forward_ports &&
         a.masquerade == b.masquerade && a.forward == b.forward;
 }
+
+bool zone_policies_equal(const ZoneState& a, const ZoneState& b) {
+    return a.target == b.target && a.sources == b.sources && a.services == b.services && a.ports == b.ports && a.rich_rules == b.rich_rules && a.forward_ports == b.forward_ports &&
+        a.masquerade == b.masquerade && a.forward == b.forward;
+}
 } // namespace ffc

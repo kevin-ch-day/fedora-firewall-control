@@ -18,12 +18,13 @@ struct SecurityAdvisoryReport {
 // Performs an explicit, read-only DNF5 advisory query for available security
 // updates affecting the local network and security stack. It never installs,
 // upgrades, or changes repository configuration.
-class SecurityAdvisoryInspector {
+class VulnerabilityAdvisoryCollector {
 public:
-    explicit SecurityAdvisoryInspector(const CommandRunner& runner) : runner_(runner) {}
+    explicit VulnerabilityAdvisoryCollector(const CommandRunner& runner) : runner_(runner) {}
     [[nodiscard]] SecurityAdvisoryReport inspect() const;
 
 private:
     const CommandRunner& runner_;
 };
+using SecurityAdvisoryInspector = VulnerabilityAdvisoryCollector; // Compatibility name for early integrations.
 } // namespace ffc

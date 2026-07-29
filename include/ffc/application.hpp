@@ -1,36 +1,19 @@
 #pragma once
 
-#include "ffc/dashboard.hpp"
-#include "ffc/network_evidence.hpp"
-#include "ffc/network_diagnostics.hpp"
-#include "ffc/credentials.hpp"
-#include "ffc/operating_mode.hpp"
-#include "ffc/posture_inspector.hpp"
-#include "ffc/security_advisories.hpp"
-
-#include <string>
+#include "ffc/command_line.hpp"
+#include "ffc/command_executor.hpp"
+#include "ffc/interactive_session.hpp"
 
 namespace ffc {
-// Coordinates user interaction and read-only firewall inspection. Mutation
-// workflows belong in separate transaction classes in later releases.
-class Application {
+// Top-level defensive-operations console that routes a typed command.
+class OperationsConsole {
 public:
-    Application(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard);
+    OperationsConsole(const CommandExecutor& commands, InteractiveSession& interactive) : commands_(commands), interactive_(interactive) {}
     int run(int argc, char** argv);
 
 private:
-    const PostureInspector& posture_;
-    const NetworkEvidenceService& network_evidence_;
-    const NetworkDiagnosticsInspector& network_diagnostics_;
-    const SecurityAdvisoryInspector& security_advisories_;
-    const IpifyCredentialStore& ipify_credentials_;
-    OperatingModeStore& operating_mode_;
-    Dashboard& dashboard_;
-    FirewallState state_;
-
-    void refresh();
-    int run_interactive();
-    int readiness_exit_code() const;
-    static void print_usage();
+    const CommandExecutor& commands_;
+    InteractiveSession& interactive_;
 };
+using Application = OperationsConsole; // Compatibility name for early integrations.
 } // namespace ffc

@@ -24,7 +24,7 @@ To enable Geo ipify enrichment, first run `./build/ffc --configure-ipify-key` an
 
 ## Assessment mode
 
-Use `./build/ffc --mode hostile` before a DEF CON, hotel, conference, or other untrusted-network session. This does not alter firewalld, NetworkManager, VPN, routing, or radios. It makes the readiness report stricter: network-reachable listeners, configured inbound services/ports, forwarding, and masquerading become failures rather than review warnings. Return to the normal assessment with `./build/ffc --mode normal`.
+Use `./build/ffc --mode hostile` before a DEF CON, hotel, conference, or other untrusted-network session. This does not alter firewalld, NetworkManager, VPN, routing, or radios. It makes the readiness report stricter: network-reachable listeners, configured inbound services/ports, intra-zone forwarding, and masquerading become failures rather than review warnings. Return to the normal assessment with `./build/ffc --mode normal`.
 
 Treat a readiness exit status of `1` as a review signal and `2` as a failed posture check. Re-run the report after changing networks, resuming from sleep, connecting a VPN, or returning from an event venue.
 
@@ -35,7 +35,7 @@ Treat a readiness exit status of `1` as a review signal and `2` as a failed post
 - Any allowed service, explicit port, rich rule, or forward-port in an active zone.
 - Network-reachable local listening sockets. This is intentionally a separate signal: a firewall exception without a listener has different risk from a listening process that becomes reachable after a zone or network change.
 - An active zone with target `ACCEPT`; it accepts otherwise-unmatched traffic.
-- Forwarding, masquerading, and source bindings, which can alter traffic flow or trust.
+- Intra-zone forwarding, masquerading, and source bindings, which can alter traffic flow or trust.
 - Runtime/permanent drift. A firewalld reload replaces runtime configuration with permanent configuration, so do not assume a tested runtime posture will survive a reload.
 - Permanent configuration validity, checked through `firewall-cmd --check-config`.
 

@@ -1,7 +1,7 @@
 #include "ffc/network_evidence.hpp"
 
 namespace ffc {
-NetworkCapture NetworkEvidenceService::capture(bool enrich, bool vpn_active) const {
+NetworkCapture NetworkEvidenceRecorder::capture(bool enrich, bool vpn_active) const {
     NetworkCapture capture;
     capture.metadata = metadata_.inspect(enrich);
     if (!capture.metadata.public_ip_lookup_succeeded) {
@@ -12,7 +12,7 @@ NetworkCapture NetworkEvidenceService::capture(bool enrich, bool vpn_active) con
     return capture;
 }
 
-SavedNetworkHistory NetworkEvidenceService::read_history() const {
+SavedNetworkHistory NetworkEvidenceRecorder::read_history() const {
     SavedNetworkHistory history;
     history.available = history_.read_recent(history.records, history.result);
     return history;

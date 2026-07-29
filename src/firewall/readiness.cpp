@@ -19,15 +19,18 @@ std::vector<ReadinessCheck> assess_readiness(const FirewallState& state) {
     checks.push_back({"permanent configuration valid", !state.permanent_config_checked ? CheckLevel::Warn : state.permanent_config_valid ? CheckLevel::Pass : CheckLevel::Fail,
                       state.permanent_config_valid ? std::string{} : "firewall-cmd --check-config did not pass"});
     checks.push_back({"default zone set", state.default_zone.empty() ? CheckLevel::Fail : CheckLevel::Pass, state.default_zone});
-    bool forwarding = false, masquerade = false, exposure = false, aligned = true, permissive_target = false, forward_ports = false;
+    bool forwarding = false, forwarding_path = false, masquerade = false, exposure = false, aligned = true, permissive_target = false, forward_ports = false;
     for (const auto& [zone, config] : state.runtime_zones) {
-        forwarding = forwarding || config.forward; masquerade = masquerade || config.masquerade;
         if (state.active_zone_interfaces.contains(zone)) {
+            forwarding = forwarding || config.forward;
+            const auto source_members = state.active_zone_sources.contains(zone) ? state.active_zone_sources.at(zone).size() : 0U;
+            forwarding_path = forwarding_path || (config.forward && state.active_zone_interfaces.at(zone).size() + source_members > 1U);
+            masquerade = masquerade || config.masquerade;
             exposure = exposure || !config.services.empty() || !config.ports.empty();
             permissive_target = permissive_target || config.target == "ACCEPT";
             forward_ports = forward_ports || !config.forward_ports.empty();
         }
-        const auto it = state.permanent_zones.find(zone); aligned = aligned && it != state.permanent_zones.end() && zone_configurations_equal(config, it->second);
+        const auto it = state.permanent_zones.find(zone); aligned = aligned && it != state.permanent_zones.end() && zone_policies_equal(config, it->second);
     }
     checks.push_back({"NetworkManager status", state.network_manager.available ? CheckLevel::Pass : CheckLevel::Warn,
                       state.network_manager.available ? "available" : "nmcli status unavailable"});
@@ -54,16 +57,16 @@ std::vector<ReadinessCheck> assess_readiness(const FirewallState& state) {
                       unclassified_connected_device ? "a connected NetworkManager device has no active-zone binding" : "all observed connected devices are classified"});
     checks.push_back({"active source bindings", state.active_zone_sources.empty() ? CheckLevel::Pass : CheckLevel::Warn,
                       state.active_zone_sources.empty() ? "none" : "review source-based trust"});
-    size_t network_listeners = 0;
-    for (const auto& listener : state.sockets.listeners) if (!listener.loopback_only) ++network_listeners;
-    checks.push_back({"network-reachable listening sockets", !state.sockets.available ? CheckLevel::Warn : network_listeners == 0 ? CheckLevel::Pass : hostile_mode ? CheckLevel::Fail : CheckLevel::Warn,
-                      !state.sockets.available ? "socket scan unavailable" : network_listeners == 0 ? "none" : std::to_string(network_listeners) + " socket(s) listening beyond loopback"});
+    const auto listener_exposure = summarize_listener_exposure(state.sockets);
+    checks.push_back({"network-reachable listening services", !state.sockets.available ? CheckLevel::Warn : listener_exposure.logical_network_services == 0 ? CheckLevel::Pass : hostile_mode ? CheckLevel::Fail : CheckLevel::Warn,
+                      !state.sockets.available ? "socket scan unavailable" : listener_exposure.logical_network_services == 0 ? "none" : std::to_string(listener_exposure.logical_network_services) + " logical service(s) across " + std::to_string(listener_exposure.network_reachable_bindings) + " non-multicast binding(s)"});
     checks.push_back({"kernel drop/reject log signals", !state.security_signals.kernel_journal_available ? CheckLevel::Warn : state.security_signals.kernel_drop_or_reject_events == 0 ? CheckLevel::Pass : CheckLevel::Warn,
                       !state.security_signals.kernel_journal_available ? "journal unavailable" : state.security_signals.kernel_drop_or_reject_events == 0 ? "none in the last 24h" : std::to_string(state.security_signals.kernel_drop_or_reject_events) + " event(s); review, do not attribute"});
     checks.push_back({"inbound services or explicit ports", exposure ? (hostile_mode ? CheckLevel::Fail : CheckLevel::Warn) : CheckLevel::Pass, exposure ? "review configured exposure" : "none"});
     checks.push_back({"active zone target", permissive_target ? CheckLevel::Fail : CheckLevel::Pass, permissive_target ? "ACCEPT target trusts unmatched traffic" : "no active ACCEPT target"});
     checks.push_back({"active forward ports", forward_ports ? CheckLevel::Warn : CheckLevel::Pass, forward_ports ? "review forwarded traffic" : "none"});
-    checks.push_back({"forwarding disabled", forwarding ? (hostile_mode ? CheckLevel::Fail : CheckLevel::Warn) : CheckLevel::Pass, {}});
+    checks.push_back({"intra-zone forwarding", !forwarding ? CheckLevel::Pass : forwarding_path ? (hostile_mode ? CheckLevel::Fail : CheckLevel::Warn) : CheckLevel::Info,
+                      !forwarding ? "disabled" : forwarding_path ? "active zone has multiple members that can forward between each other" : "configured, but no active zone has multiple interface/source members"});
     checks.push_back({"masquerading disabled", masquerade ? (hostile_mode ? CheckLevel::Fail : CheckLevel::Warn) : CheckLevel::Pass, {}});
     checks.push_back({"permanent/runtime state aligned", aligned ? CheckLevel::Pass : CheckLevel::Warn,
                       aligned ? std::string{} : "runtime differs from permanent"});

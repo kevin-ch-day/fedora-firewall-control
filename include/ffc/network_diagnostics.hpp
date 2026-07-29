@@ -22,12 +22,13 @@ struct NetworkDiagnostics {
     std::string traceroute_output;
 };
 
-class NetworkDiagnosticsInspector {
+class ConnectivityAssessment {
 public:
-    explicit NetworkDiagnosticsInspector(const CommandRunner& runner) : runner_(runner) {}
+    explicit ConnectivityAssessment(const CommandRunner& runner) : runner_(runner) {}
     [[nodiscard]] NetworkDiagnostics inspect() const;
 
 private:
     const CommandRunner& runner_;
 };
+using NetworkDiagnosticsInspector = ConnectivityAssessment; // Compatibility name for early integrations.
 } // namespace ffc

@@ -12,7 +12,7 @@ std::size_t occurrences(const std::string& text, const std::string& needle) {
 }
 } // namespace
 
-SecurityAdvisoryReport SecurityAdvisoryInspector::inspect() const {
+SecurityAdvisoryReport VulnerabilityAdvisoryCollector::inspect() const {
     const auto result = runner_.run({"dnf5", "advisory", "list", "--security", "--with-cve", "--contains-pkgs=firewalld,NetworkManager,nftables,kernel,kernel-core,openssl,curl,dbus,polkit", "--json"});
     SecurityAdvisoryReport report;
     report.dnf_available = result.exit_code != 127;

@@ -36,3 +36,11 @@ The DNF5 documentation specifies that `check-upgrade` exits `100` when updates a
 3. Apply updates through Fedora’s normal package workflow when you have power, connectivity, and a recovery window.
 4. Reboot if a kernel or foundational service update requires it, then re-run the posture report.
 5. Make firewall changes as separate, reviewed transactions; never combine an urgent package update with unreviewed zone changes on an untrusted network.
+
+## Port intelligence
+
+Listener and open-port views label ports as well-known (`0-1023`), registered (`1024-49151`), or dynamic/private (`49152-65535`). The built-in defensive catalogue covers more than 250 TCP, UDP, and SCTP assignments across management, identity, file sharing, databases, VPNs, discovery, routing, industrial control, container platforms, and web services; Fedora's local service database fills additional conventional-name gaps. Firewalld port ranges are identified as ranges rather than guessed as one service. The ranges follow the [IANA Service Name and Transport Protocol Port Number Registry](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml).
+
+The additional [port catalogue guide](PORT_CATALOG.md) describes the offline lookup order, the intentionally narrow conventional ranges, and the rules for adding entries.
+
+These labels are triage aids only: an IANA registration or a conventional port number does not prove the process, protocol behavior, or remote reachability. Verify unusual listeners against the local process owner and actual traffic before making a firewall decision.

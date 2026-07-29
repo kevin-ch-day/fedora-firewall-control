@@ -1,0 +1,35 @@
+#pragma once
+
+#include "ffc/operating_mode.hpp"
+
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace ffc {
+enum class CommandAction {
+    Interactive,
+    Help,
+    Status,
+    Readiness,
+    Listeners,
+    ThreatAssessment,
+    NetworkDiagnostics,
+    SecurityAdvisories,
+    NetworkMetadata,
+    NetworkHistory,
+    ConfigureIpifyKey,
+    Mode,
+    Invalid,
+};
+
+struct CommandLine {
+    CommandAction action{CommandAction::Invalid};
+    bool enrich_metadata{false};
+    std::optional<OperatingMode> mode_to_set;
+};
+
+// Parses only supported fixed commands. Argument interpretation stays outside
+// Application so UI execution never needs to reason about raw argv values.
+[[nodiscard]] CommandLine parse_command_line(const std::vector<std::string>& arguments);
+} // namespace ffc

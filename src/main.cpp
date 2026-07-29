@@ -6,6 +6,7 @@
 #include "ffc/vpn.hpp"
 #include "ffc/socket_inspector.hpp"
 #include "ffc/security_signals.hpp"
+#include "ffc/evidence_quality.hpp"
 #include "ffc/network_metadata.hpp"
 #include "ffc/network_diagnostics.hpp"
 #include "ffc/network_evidence.hpp"
@@ -13,6 +14,8 @@
 #include "ffc/operating_mode.hpp"
 #include "ffc/posture_inspector.hpp"
 #include "ffc/security_advisories.hpp"
+#include "ffc/command_executor.hpp"
+#include "ffc/interactive_session.hpp"
 
 int main(int argc, char** argv) {
     ffc::ProcessCommandRunner runner;
@@ -21,15 +24,18 @@ int main(int argc, char** argv) {
     ffc::VpnInspector vpn(runner);
     ffc::SocketInspector sockets(runner);
     ffc::SecuritySignalsInspector security_signals(runner);
+    ffc::EvidenceQualityInspector evidence_quality(runner);
     ffc::IpifyCredentialStore ipify_credentials;
     ffc::NetworkMetadataInspector network_metadata(runner, ipify_credentials);
     ffc::NetworkHistoryStore network_history;
-    ffc::NetworkEvidenceService network_evidence(network_metadata, network_history);
-    ffc::NetworkDiagnosticsInspector network_diagnostics(runner);
-    ffc::SecurityAdvisoryInspector security_advisories(runner);
+    ffc::NetworkEvidenceRecorder network_evidence(network_metadata, network_history);
+    ffc::ConnectivityAssessment network_diagnostics(runner);
+    ffc::VulnerabilityAdvisoryCollector security_advisories(runner);
     ffc::OperatingModeStore operating_mode;
-    ffc::PostureInspector posture(backend, network_manager, vpn, sockets, security_signals, operating_mode);
+    ffc::DefensivePostureCollector posture(backend, network_manager, vpn, sockets, security_signals, evidence_quality, operating_mode);
     ffc::TerminalUi ui;
-    ffc::Dashboard dashboard(ui);
-    return ffc::Application(posture, network_evidence, network_diagnostics, security_advisories, ipify_credentials, operating_mode, dashboard).run(argc, argv);
+    ffc::OperationsDashboard dashboard(ui);
+    ffc::CommandExecutor commands(posture, network_evidence, network_diagnostics, security_advisories, ipify_credentials, operating_mode, dashboard);
+    ffc::InteractiveSession interactive(posture, network_evidence, network_diagnostics, security_advisories, dashboard);
+    return ffc::OperationsConsole(commands, interactive).run(argc, argv);
 }
