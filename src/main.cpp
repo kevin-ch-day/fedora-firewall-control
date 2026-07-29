@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     ffc::DefensivePostureCollector posture(backend, network_manager, vpn, sockets, security_signals, evidence_quality, operating_mode);
     ffc::TerminalUi ui;
     ffc::OperationsDashboard dashboard(ui);
-    ffc::CommandExecutor commands(posture, network_evidence, network_diagnostics, security_advisories, log_analyzer, ipify_credentials, operating_mode, dashboard);
+    ffc::CommandExecutor commands(posture, vpn, sockets, network_evidence, network_diagnostics, security_advisories, log_analyzer, ipify_credentials, operating_mode, dashboard);
     ffc::InteractiveSession interactive(posture, network_evidence, network_diagnostics, security_advisories, log_analyzer, dashboard, logger);
     return ffc::OperationsConsole(commands, interactive, logger).run(argc, argv);
 }

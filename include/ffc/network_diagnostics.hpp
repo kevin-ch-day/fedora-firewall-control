@@ -45,6 +45,8 @@ struct NetworkDiagnostics {
     std::vector<TracerouteResult> traceroutes;
     std::optional<PathStabilityReport> path_stability;
     std::vector<ResolverProbe> resolver_probes;
+
+    [[nodiscard]] bool has_unavailable_tools() const;
 };
 
 class ConnectivityAssessment {

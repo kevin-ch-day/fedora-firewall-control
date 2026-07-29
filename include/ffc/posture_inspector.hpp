@@ -16,7 +16,7 @@ public:
     DefensivePostureCollector(const FirewallBackend& firewall, const NetworkManagerInspector& network_manager, const VpnInspector& vpn, const SocketInspector& sockets, const SecuritySignalsInspector& security_signals, const EvidenceQualityInspector& evidence_quality, const OperatingModeStore& operating_mode)
         : firewall_(firewall), network_manager_(network_manager), vpn_(vpn), sockets_(sockets), security_signals_(security_signals), evidence_quality_(evidence_quality), operating_mode_(operating_mode) {}
 
-    [[nodiscard]] FirewallState inspect() const;
+    [[nodiscard]] FirewallState inspect(PostureCollectionDepth depth = PostureCollectionDepth::Complete) const;
 
 private:
     const FirewallBackend& firewall_;

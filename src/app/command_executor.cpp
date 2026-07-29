@@ -48,8 +48,8 @@ int readiness_exit_code(const FirewallState& state) {
 }
 } // namespace
 
-CommandExecutor::CommandExecutor(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const LocalLogAnalyzer& log_analyzer, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard)
-    : posture_(posture), network_evidence_(network_evidence), network_diagnostics_(network_diagnostics), security_advisories_(security_advisories), log_analyzer_(log_analyzer), ipify_credentials_(ipify_credentials), operating_mode_(operating_mode), dashboard_(dashboard) {}
+CommandExecutor::CommandExecutor(const PostureInspector& posture, const VpnInspector& vpn, const SocketInspector& sockets, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const LocalLogAnalyzer& log_analyzer, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard)
+    : posture_(posture), vpn_(vpn), sockets_(sockets), network_evidence_(network_evidence), network_diagnostics_(network_diagnostics), security_advisories_(security_advisories), log_analyzer_(log_analyzer), ipify_credentials_(ipify_credentials), operating_mode_(operating_mode), dashboard_(dashboard) {}
 
 int CommandExecutor::execute(const CommandLine& command) const {
     if (command.action == CommandAction::Invalid) { print_usage(); return 2; }
@@ -73,17 +73,28 @@ int CommandExecutor::execute(const CommandLine& command) const {
     }
     if (command.action == CommandAction::SecurityAdvisories) { const auto report = security_advisories_.inspect(); dashboard_.show_security_advisories(report); return report.query_succeeded ? 0 : 2; }
     if (command.action == CommandAction::LogAnalysis) { const auto analysis = log_analyzer_.inspect(); dashboard_.show_log_analysis(analysis); return analysis.logs_available ? 0 : 2; }
+    if (command.action == CommandAction::NetworkHistory) {
+        const auto history = network_evidence_.read_history();
+        dashboard_.show_network_history(history.records, history.display_status());
+        return history.available ? 0 : 2;
+    }
+    if (command.action == CommandAction::Listeners) {
+        FirewallState state;
+        state.sockets = sockets_.inspect();
+        dashboard_.show_listeners(state);
+        return state.sockets.available ? 0 : 2;
+    }
+    if (command.action == CommandAction::NetworkMetadata) {
+        const auto vpn = vpn_.inspect();
+        const auto capture = network_evidence_.capture(command.enrich_metadata, !vpn.active_tunnel_interfaces.empty());
+        dashboard_.show_network_metadata(capture.metadata, capture.history_status());
+        return capture.successful() ? 0 : 2;
+    }
 
     const auto state = posture_.inspect();
     if (command.action == CommandAction::Status) { dashboard_.show_status(state); dashboard_.show_overview(state); return state.installed ? 0 : 2; }
     if (command.action == CommandAction::Readiness) { dashboard_.show_readiness(state); return readiness_exit_code(state); }
-    if (command.action == CommandAction::Listeners) { dashboard_.show_listeners(state); return state.sockets.available ? 0 : 2; }
     if (command.action == CommandAction::ThreatAssessment) { dashboard_.show_threat_assessment(state); return 0; }
-    if (command.action == CommandAction::NetworkMetadata) {
-        const auto capture = network_evidence_.capture(command.enrich_metadata, !state.vpn.active_tunnel_interfaces.empty());
-        dashboard_.show_network_metadata(capture.metadata, capture.history_status()); return capture.successful() ? 0 : 2;
-    }
-    if (command.action == CommandAction::NetworkHistory) { const auto history = network_evidence_.read_history(); dashboard_.show_network_history(history.records, history.display_status()); return history.available ? 0 : 2; }
     return 2;
 }
 } // namespace ffc

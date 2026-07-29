@@ -2,6 +2,7 @@
 
 #include "ffc/logging_utils.hpp"
 #include "ffc/secure_storage.hpp"
+#include "ffc/unique_file_descriptor.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -9,6 +10,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utility>
 
 namespace ffc {
 namespace {
@@ -19,46 +21,39 @@ public:
     ScopedLogLock() = default;
 
     bool acquire(const std::string& path, std::string& error) {
-        const int descriptor = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR);
-        if (descriptor < 0) { error = std::strerror(errno); return false; }
+        UniqueFileDescriptor descriptor{open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR)};
+        if (!descriptor) { error = std::strerror(errno); return false; }
         struct stat status {};
-        if (fstat(descriptor, &status) != 0) {
+        if (fstat(descriptor.get(), &status) != 0) {
             error = std::strerror(errno);
-            close(descriptor);
             return false;
         }
         if (!S_ISREG(status.st_mode) || status.st_uid != geteuid() || status.st_nlink != 1) {
             error = "log lock is not a private regular file";
-            close(descriptor);
             return false;
         }
-        if (fchmod(descriptor, S_IRUSR | S_IWUSR) != 0) {
+        if (fchmod(descriptor.get(), S_IRUSR | S_IWUSR) != 0) {
             error = std::strerror(errno);
-            close(descriptor);
             return false;
         }
-        while (flock(descriptor, LOCK_EX) != 0) {
+        while (flock(descriptor.get(), LOCK_EX) != 0) {
             if (errno == EINTR) continue;
             error = std::strerror(errno);
-            close(descriptor);
             return false;
         }
-        descriptor_ = descriptor;
+        descriptor_ = std::move(descriptor);
         return true;
     }
 
     ~ScopedLogLock() {
-        if (descriptor_ >= 0) {
-            flock(descriptor_, LOCK_UN);
-            close(descriptor_);
-        }
+        if (descriptor_) flock(descriptor_.get(), LOCK_UN);
     }
 
     ScopedLogLock(const ScopedLogLock&) = delete;
     ScopedLogLock& operator=(const ScopedLogLock&) = delete;
 
 private:
-    int descriptor_{-1};
+    UniqueFileDescriptor descriptor_;
 };
 }
 

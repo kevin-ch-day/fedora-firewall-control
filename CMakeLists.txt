@@ -67,6 +67,8 @@ set(FFC_CORE_SOURCES
   src/app/interactive_session.cpp
   src/core/command_runner.cpp
   src/core/secure_storage.cpp
+  src/core/text_utils.cpp
+  src/core/unique_file_descriptor.cpp
   src/firewall/firewall_state.cpp
   src/firewall/firewalld_backend.cpp
   src/firewall/port_catalog.cpp
@@ -121,6 +123,7 @@ if(BUILD_TESTING)
   set(FFC_TEST_SOURCES
     tests/test_main.cpp
     tests/test_diagnostics.cpp
+    tests/test_command_executor.cpp
     tests/test_firewall_parsing.cpp
     tests/test_logging_analysis.cpp
     tests/test_network_paths.cpp
@@ -129,6 +132,8 @@ if(BUILD_TESTING)
     tests/test_process_runner.cpp
     tests/test_security_advisories.cpp
     tests/test_storage.cpp
+    tests/test_text_utils.cpp
+    tests/test_unique_file_descriptor.cpp
   )
   add_executable(ffc_tests ${FFC_TEST_SOURCES})
   target_link_libraries(ffc_tests PRIVATE ffc_core ffc_project_warnings)

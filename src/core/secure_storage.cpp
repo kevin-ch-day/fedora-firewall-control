@@ -1,4 +1,5 @@
 #include "ffc/secure_storage.hpp"
+#include "ffc/unique_file_descriptor.hpp"
 
 #include <cerrno>
 #include <cstdlib>
@@ -55,39 +56,38 @@ bool write_private_file(const std::string& path, const std::string& content, boo
     // Do not truncate before checking ownership and file type. Otherwise a
     // caller could lose data if a path was replaced between lookups.
     const int flags = O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW | (append ? O_APPEND : 0);
-    const int descriptor = open(path.c_str(), flags, S_IRUSR | S_IWUSR);
-    if (descriptor < 0) { error = std::strerror(errno); return false; }
-    bool success = private_regular_file(descriptor, error) && fchmod(descriptor, S_IRUSR | S_IWUSR) == 0;
+    UniqueFileDescriptor descriptor{open(path.c_str(), flags, S_IRUSR | S_IWUSR)};
+    if (!descriptor) { error = std::strerror(errno); return false; }
+    bool success = private_regular_file(descriptor.get(), error) && fchmod(descriptor.get(), S_IRUSR | S_IWUSR) == 0;
     if (!success && error.empty()) error = std::strerror(errno);
-    if (success && !append && (ftruncate(descriptor, 0) != 0 || lseek(descriptor, 0, SEEK_SET) < 0)) {
+    if (success && !append && (ftruncate(descriptor.get(), 0) != 0 || lseek(descriptor.get(), 0, SEEK_SET) < 0)) {
         success = false; error = std::strerror(errno);
     }
     const char* remaining = content.data(); std::size_t bytes = content.size();
     while (success && bytes > 0) {
-        const ssize_t written = write(descriptor, remaining, bytes);
+        const ssize_t written = write(descriptor.get(), remaining, bytes);
         if (written < 0 && errno == EINTR) continue;
         if (written <= 0) { success = false; error = written == 0 ? "storage write made no progress" : std::strerror(errno); break; }
         remaining += written; bytes -= static_cast<std::size_t>(written);
     }
-    if (success && fsync(descriptor) != 0) { success = false; error = std::strerror(errno); }
-    if (close(descriptor) != 0 && success) { success = false; error = std::strerror(errno); }
+    if (success && fsync(descriptor.get()) != 0) { success = false; error = std::strerror(errno); }
+    if (success && !descriptor.close(error)) success = false;
     return success;
 }
 
 bool read_private_file(const std::string& path, std::string& content, std::string& error, std::size_t maximum_bytes) {
-    const int descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
-    if (descriptor < 0) { error = std::strerror(errno); return false; }
-    if (!private_regular_file(descriptor, error)) { close(descriptor); return false; }
+    UniqueFileDescriptor descriptor{open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW)};
+    if (!descriptor) { error = std::strerror(errno); return false; }
+    if (!private_regular_file(descriptor.get(), error)) return false;
     content.clear(); char buffer[4096];
     while (true) {
-        const ssize_t count = read(descriptor, buffer, sizeof(buffer));
+        const ssize_t count = read(descriptor.get(), buffer, sizeof(buffer));
         if (count < 0 && errno == EINTR) continue;
-        if (count < 0) { error = std::strerror(errno); close(descriptor); return false; }
+        if (count < 0) { error = std::strerror(errno); return false; }
         if (count == 0) break;
-        if (content.size() + static_cast<std::size_t>(count) > maximum_bytes) { error = "storage file exceeds safe size limit"; close(descriptor); return false; }
+        if (content.size() + static_cast<std::size_t>(count) > maximum_bytes) { error = "storage file exceeds safe size limit"; return false; }
         content.append(buffer, static_cast<std::size_t>(count));
     }
-    close(descriptor);
-    return true;
+    return descriptor.close(error);
 }
 } // namespace ffc

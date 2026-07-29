@@ -8,7 +8,7 @@ CommandResult FirewalldCommandBackend::firewalld_cmd(const std::vector<std::stri
     return runner_.run(command);
 }
 
-FirewallState FirewalldCommandBackend::inspect() const {
+FirewallState FirewalldCommandBackend::inspect(const PostureCollectionDepth depth) const {
     FirewallState state;
     const auto version = firewalld_cmd({"--version"});
     state.installed = version.success();
@@ -35,12 +35,14 @@ FirewallState FirewalldCommandBackend::inspect() const {
     const auto runtime_zones = firewalld_cmd({"--list-all-zones"});
     if (runtime_zones.success()) state.runtime_zones = parse_all_zone_info(runtime_zones.stdout_text);
     else state.errors.push_back("could not inspect runtime zones: " + runtime_zones.stderr_text);
-    const auto permanent_zones = firewalld_cmd({"--permanent", "--list-all-zones"});
-    if (permanent_zones.success()) state.permanent_zones = parse_all_zone_info(permanent_zones.stdout_text);
-    else state.errors.push_back("could not inspect permanent zones: " + permanent_zones.stderr_text);
-    const auto policies = firewalld_cmd({"--get-active-policies"});
-    if (policies.success()) state.active_policies = parse_active_policy_names(policies.stdout_text);
-    else state.errors.push_back("could not list active policies: " + policies.stderr_text);
+    if (depth == PostureCollectionDepth::Complete) {
+        const auto permanent_zones = firewalld_cmd({"--permanent", "--list-all-zones"});
+        if (permanent_zones.success()) state.permanent_zones = parse_all_zone_info(permanent_zones.stdout_text);
+        else state.errors.push_back("could not inspect permanent zones: " + permanent_zones.stderr_text);
+        const auto policies = firewalld_cmd({"--get-active-policies"});
+        if (policies.success()) state.active_policies = parse_active_policy_names(policies.stdout_text);
+        else state.errors.push_back("could not list active policies: " + policies.stderr_text);
+    }
     return state;
 }
 } // namespace ffc

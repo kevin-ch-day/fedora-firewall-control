@@ -8,6 +8,8 @@
 #include "ffc/posture_inspector.hpp"
 #include "ffc/security_advisories.hpp"
 
+#include <string_view>
+
 namespace ffc {
 // Owns the refreshable state and keyboard loop of the terminal dashboard.
 class InteractiveSession {
@@ -25,7 +27,7 @@ private:
     const LoggingEngine& logger_;
     FirewallState state_;
 
-    void refresh();
-    void record_action(const char* action, LogChannel channel = LogChannel::Audit) const;
+    void refresh(PostureCollectionDepth depth = PostureCollectionDepth::Landing);
+    void record_action(std::string_view action, LogChannel channel = LogChannel::Audit) const;
 };
 } // namespace ffc

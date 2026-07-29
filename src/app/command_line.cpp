@@ -27,9 +27,9 @@ CommandLine parse_command_line(const std::vector<std::string>& arguments) {
     if (arguments.size() == 2 && arguments[0] == "--network-diagnostics" && arguments[1] == "--extended") { auto result = make_command(CommandAction::NetworkDiagnostics); result.extended_diagnostics = true; return result; }
     if (arguments.size() == 2 && arguments[0] == "--network-diagnostics" && arguments[1] == "--advanced") { auto result = make_command(CommandAction::NetworkDiagnostics); result.extended_diagnostics = true; result.advanced_diagnostics = true; return result; }
     if (arguments.size() == 2 && arguments[0] == "--mode") {
-        OperatingMode mode;
-        if (!parse_operating_mode(arguments[1], mode)) return make_command(CommandAction::Invalid);
-        auto result = make_command(CommandAction::Mode); result.mode_to_set = mode; return result;
+        const auto mode = parse_operating_mode(arguments[1]);
+        if (!mode) return make_command(CommandAction::Invalid);
+        auto result = make_command(CommandAction::Mode); result.mode_to_set = *mode; return result;
     }
     return make_command(CommandAction::Invalid);
 }

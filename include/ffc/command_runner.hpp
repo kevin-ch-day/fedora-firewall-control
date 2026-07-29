@@ -8,7 +8,7 @@ struct CommandResult {
     int exit_code{-1};
     std::string stdout_text;
     std::string stderr_text;
-    [[nodiscard]] bool success() const { return exit_code == 0; }
+    [[nodiscard]] constexpr bool success() const noexcept { return exit_code == 0; }
 };
 
 class CommandRunner {

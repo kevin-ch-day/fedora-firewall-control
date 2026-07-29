@@ -7,7 +7,7 @@ namespace ffc {
 class FirewalldCommandBackend final : public FirewallBackend {
 public:
     explicit FirewalldCommandBackend(const CommandRunner& runner) : runner_(runner) {}
-    FirewallState inspect() const override;
+    [[nodiscard]] FirewallState inspect(PostureCollectionDepth depth) const override;
 private:
     const CommandRunner& runner_;
     CommandResult firewalld_cmd(const std::vector<std::string>& args) const;

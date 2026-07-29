@@ -8,17 +8,21 @@
 #include "ffc/log_analysis.hpp"
 #include "ffc/posture_inspector.hpp"
 #include "ffc/security_advisories.hpp"
+#include "ffc/socket_inspector.hpp"
+#include "ffc/vpn.hpp"
 
 namespace ffc {
 // Executes validated non-interactive commands. It owns no terminal session
 // state and never receives raw argv values.
 class CommandExecutor {
 public:
-    CommandExecutor(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const LocalLogAnalyzer& log_analyzer, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard);
+    CommandExecutor(const PostureInspector& posture, const VpnInspector& vpn, const SocketInspector& sockets, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const LocalLogAnalyzer& log_analyzer, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard);
     int execute(const CommandLine& command) const;
 
 private:
     const PostureInspector& posture_;
+    const VpnInspector& vpn_;
+    const SocketInspector& sockets_;
     const NetworkEvidenceService& network_evidence_;
     const NetworkDiagnosticsInspector& network_diagnostics_;
     const SecurityAdvisoryInspector& security_advisories_;

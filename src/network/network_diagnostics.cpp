@@ -1,6 +1,7 @@
 #include "ffc/network_diagnostics.hpp"
 
 #include <algorithm>
+#include <ranges>
 
 namespace ffc {
 namespace {
@@ -9,6 +10,14 @@ std::string output_or_error(const CommandResult& result) {
     return result.stdout_text.empty() ? result.stderr_text : result.stdout_text;
 }
 } // namespace
+
+bool NetworkDiagnostics::has_unavailable_tools() const {
+    const auto unavailable = [](const auto& item) { return !item.command_available; };
+    return std::ranges::any_of(probes, unavailable) ||
+           std::ranges::any_of(traceroutes, unavailable) ||
+           (path_stability.has_value() && !path_stability->command_available) ||
+           std::ranges::any_of(resolver_probes, unavailable);
+}
 
 NetworkDiagnostics ConnectivityAssessment::inspect(const bool extended, const bool advanced) const {
     NetworkDiagnostics diagnostics;
