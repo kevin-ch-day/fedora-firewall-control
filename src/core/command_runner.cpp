@@ -1,5 +1,6 @@
 #include "ffc/command_runner.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -44,92 +45,56 @@ class ScopedSigpipeIgnore {
     bool active_{false};
 };
 
-struct InputWriteResult {
-    bool rejected{false};
-    bool failed{false};
-    bool timed_out{false};
-    std::string error;
-};
-
 void append_error(std::string &target, const std::string &detail) {
     if (!target.empty())
         target += '\n';
     target += detail;
 }
 
-InputWriteResult write_standard_input(const int descriptor, const std::string &standard_input,
-                                      const std::chrono::steady_clock::time_point deadline) {
-    InputWriteResult result;
-    if (standard_input.empty())
-        return result;
-
-    const int flags = fcntl(descriptor, F_GETFL);
-    if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != 0) {
-        result.failed = true;
-        result.error = std::strerror(errno);
-        return result;
-    }
-
-    // A consumer may reject input or exit before reading it. Treat EPIPE as a
-    // command-level failure to accept input, never as a signal that can end
-    // this defensive console.
-    const ScopedSigpipeIgnore ignore_sigpipe;
-    const char *remaining = standard_input.data();
-    std::size_t bytes_remaining = standard_input.size();
-    while (bytes_remaining > 0) {
-        const ssize_t written = write(descriptor, remaining, bytes_remaining);
-        if (written > 0) {
-            remaining += written;
-            bytes_remaining -= static_cast<std::size_t>(written);
-            continue;
-        }
-        if (written < 0 && errno == EINTR)
-            continue;
-        if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            const auto now = std::chrono::steady_clock::now();
-            if (now >= deadline) {
-                result.timed_out = true;
-                break;
-            }
-            pollfd input_descriptor{descriptor, POLLOUT, 0};
-            const int wait_milliseconds = static_cast<int>(std::min<long>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count(),
-                1000));
-            if (poll(&input_descriptor, 1, wait_milliseconds) < 0 && errno != EINTR) {
-                result.failed = true;
-                result.error = std::strerror(errno);
-                break;
-            }
-            continue;
-        }
-        result.rejected = true;
-        break;
-    }
-    return result;
-}
-
-struct OutputDrainResult {
+struct CommunicationResult {
     std::string standard_output;
     std::string standard_error;
     bool timed_out{false};
     bool truncated{false};
-    bool failed{false};
+    bool output_failed{false};
+    bool input_rejected{false};
+    bool input_failed{false};
+    std::string input_error;
 };
 
-OutputDrainResult drain_process_output(const int stdout_descriptor, const int stderr_descriptor,
-                                       const pid_t child,
-                                       const std::chrono::steady_clock::time_point deadline,
-                                       const bool terminate_before_read) {
-    OutputDrainResult result;
-    std::array<pollfd, 2> descriptors{
-        {{stdout_descriptor, POLLIN, 0}, {stderr_descriptor, POLLIN, 0}}};
-    int open_descriptors = 2;
+CommunicationResult communicate_with_process(const int stdout_descriptor,
+                                             const int stderr_descriptor,
+                                             const int input_descriptor,
+                                             const std::string &standard_input, const pid_t child,
+                                             const std::chrono::steady_clock::time_point deadline) {
+    CommunicationResult result;
+    std::array<pollfd, 3> descriptors{
+        {{stdout_descriptor, POLLIN, 0},
+         {stderr_descriptor, POLLIN, 0},
+         {input_descriptor, static_cast<short>(standard_input.empty() ? 0 : POLLOUT), 0}}};
+    int open_descriptors = standard_input.empty() ? 2 : 3;
+    std::size_t input_offset = 0;
     bool terminated = false;
-    if (terminate_before_read) {
-        kill(child, SIGKILL);
-        terminated = true;
+    if (standard_input.empty()) {
+        close(descriptors[2].fd);
+        descriptors[2].fd = -1;
+    } else {
+        const int flags = fcntl(input_descriptor, F_GETFL);
+        if (flags < 0 || fcntl(input_descriptor, F_SETFL, flags | O_NONBLOCK) != 0) {
+            result.input_failed = true;
+            result.input_error = std::strerror(errno);
+            kill(child, SIGKILL);
+            terminated = true;
+            close(descriptors[2].fd);
+            descriptors[2].fd = -1;
+            --open_descriptors;
+        }
     }
 
+    // A consumer may close standard input while output is still being drained.
+    // Ignore SIGPIPE here so that becomes a command result instead of ending
+    // the console process.
+    const ScopedSigpipeIgnore ignore_sigpipe;
     while (open_descriptors > 0) {
         const auto now = std::chrono::steady_clock::now();
         if (!terminated && now >= deadline) {
@@ -139,13 +104,15 @@ OutputDrainResult drain_process_output(const int stdout_descriptor, const int st
         const int wait_milliseconds =
             terminated
                 ? 1000
-                : static_cast<int>(std::min<long>(
-                      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count(),
-                      1000));
+                : static_cast<int>(std::max<long>(
+                      1, std::min<long>(
+                             std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+                                 .count(),
+                             1000)));
         if (poll(descriptors.data(), descriptors.size(), wait_milliseconds) < 0) {
             if (errno == EINTR)
                 continue;
-            result.failed = true;
+            result.output_failed = true;
             append_error(result.standard_error,
                          std::string("command output polling failed: ") + std::strerror(errno));
             if (!terminated)
@@ -157,15 +124,57 @@ OutputDrainResult drain_process_output(const int stdout_descriptor, const int st
             }
             break;
         }
-        for (auto &descriptor : descriptors) {
+        for (std::size_t index = 0; index < descriptors.size(); ++index) {
+            auto &descriptor = descriptors[index];
             if (descriptor.fd < 0 || descriptor.revents == 0)
                 continue;
             if (descriptor.revents & POLLNVAL) {
-                result.failed = true;
-                append_error(result.standard_error, "command output descriptor became invalid");
+                if (index == 2) {
+                    result.input_failed = true;
+                    result.input_error = "command standard-input descriptor became invalid";
+                } else {
+                    result.output_failed = true;
+                    append_error(result.standard_error, "command output descriptor became invalid");
+                }
                 if (!terminated) {
                     kill(child, SIGKILL);
                     terminated = true;
+                }
+                close(descriptor.fd);
+                descriptor.fd = -1;
+                --open_descriptors;
+                continue;
+            }
+            if (index == 2) {
+                if (descriptor.revents & (POLLERR | POLLHUP)) {
+                    result.input_rejected = input_offset < standard_input.size();
+                    close(descriptor.fd);
+                    descriptor.fd = -1;
+                    --open_descriptors;
+                    continue;
+                }
+                if (!(descriptor.revents & POLLOUT))
+                    continue;
+                const ssize_t written = write(descriptor.fd, standard_input.data() + input_offset,
+                                              standard_input.size() - input_offset);
+                if (written > 0) {
+                    input_offset += static_cast<std::size_t>(written);
+                    if (input_offset == standard_input.size()) {
+                        close(descriptor.fd);
+                        descriptor.fd = -1;
+                        --open_descriptors;
+                    }
+                    continue;
+                }
+                if (written < 0 && errno == EINTR)
+                    continue;
+                if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                    continue;
+                if (written < 0 && errno == EPIPE) {
+                    result.input_rejected = true;
+                } else {
+                    result.input_failed = true;
+                    result.input_error = std::strerror(errno);
                 }
                 close(descriptor.fd);
                 descriptor.fd = -1;
@@ -191,7 +200,7 @@ OutputDrainResult drain_process_output(const int stdout_descriptor, const int st
             if (count < 0 && errno == EINTR)
                 continue;
             if (count < 0) {
-                result.failed = true;
+                result.output_failed = true;
                 append_error(result.standard_error,
                              std::string("command output read failed: ") + std::strerror(errno));
                 if (!terminated) {
@@ -264,18 +273,17 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
     close(input_pipe[0]);
     input_pipe[0] = -1;
     const auto deadline = std::chrono::steady_clock::now() + command_timeout;
-    const auto input_result = write_standard_input(input_pipe[1], standard_input, deadline);
-    close(input_pipe[1]);
-    input_pipe[1] = -1;
     close(out_pipe[1]);
     out_pipe[1] = -1;
     close(err_pipe[1]);
     err_pipe[1] = -1;
     const int stdout_descriptor = out_pipe[0];
     const int stderr_descriptor = err_pipe[0];
+    const int input_descriptor = input_pipe[1];
     out_pipe[0] = err_pipe[0] = -1;
-    auto output_result = drain_process_output(stdout_descriptor, stderr_descriptor, pid, deadline,
-                                              input_result.timed_out || input_result.failed);
+    input_pipe[1] = -1;
+    auto output_result = communicate_with_process(stdout_descriptor, stderr_descriptor,
+                                                  input_descriptor, standard_input, pid, deadline);
     int status{};
     pid_t waited{};
     do {
@@ -284,21 +292,19 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
     if (waited < 0) {
         append_error(output_result.standard_error,
                      std::string("could not wait for command: ") + std::strerror(errno));
-        output_result.failed = true;
+        output_result.output_failed = true;
     }
     if (output_result.timed_out)
         append_error(output_result.standard_error, "command exceeded 60-second safety limit");
     if (output_result.truncated)
         append_error(output_result.standard_error, "command output exceeded 1 MiB safety limit");
-    if (input_result.timed_out)
-        append_error(output_result.standard_error, "command input exceeded 60-second safety limit");
-    if (input_result.rejected)
+    if (output_result.input_rejected)
         append_error(output_result.standard_error, "command did not accept all standard input");
-    if (input_result.failed)
+    if (output_result.input_failed)
         append_error(output_result.standard_error,
-                     "command standard-input write failed: " + input_result.error);
-    if (output_result.timed_out || output_result.truncated || input_result.timed_out ||
-        input_result.rejected || input_result.failed || output_result.failed)
+                     "command standard-input write failed: " + output_result.input_error);
+    if (output_result.timed_out || output_result.truncated || output_result.input_rejected ||
+        output_result.input_failed || output_result.output_failed)
         return {-1, output_result.standard_output, output_result.standard_error};
     return {WIFEXITED(status) ? WEXITSTATUS(status) : -1, output_result.standard_output,
             output_result.standard_error};
