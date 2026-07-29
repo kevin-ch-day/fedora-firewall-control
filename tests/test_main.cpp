@@ -8,6 +8,7 @@
 #include "ffc/socket_inspector.hpp"
 #include "ffc/security_signals.hpp"
 #include "ffc/security_advisories.hpp"
+#include "ffc/secure_storage.hpp"
 #include "ffc/terminal_ui.hpp"
 #include "ffc/threat_assessment.hpp"
 #include "ffc/vpn.hpp"
@@ -16,7 +17,10 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
+#include <string>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -141,6 +145,26 @@ int main() {
     expect(wireguard_port.likely_service == "WireGuard", "maps WireGuard port name");
     expect(dynamic_port.range == ffc::PortRange::DynamicPrivate, "identifies dynamic/private ports");
     expect(ffc::is_valid_ipify_api_key("at_example_key-123") && !ffc::is_valid_ipify_api_key("") && !ffc::is_valid_ipify_api_key("contains a space"), "validates Geo ipify key format");
+    char storage_directory_template[] = "/tmp/ffc-storage-test.XXXXXX";
+    char* const storage_directory = mkdtemp(storage_directory_template);
+    expect(storage_directory != nullptr, "creates an isolated local-storage test directory");
+    if (storage_directory != nullptr) {
+        const std::string storage_file = std::string(storage_directory) + "/private-data";
+        const std::string linked_storage_file = std::string(storage_directory) + "/private-data-link";
+        std::string storage_error, storage_content;
+        expect(ffc::write_private_file(storage_file, "original", false, storage_error), "writes an owner-only storage file");
+        expect(link(storage_file.c_str(), linked_storage_file.c_str()) == 0, "creates a storage hard-link test fixture");
+        storage_error.clear();
+        expect(!ffc::write_private_file(storage_file, "replacement", false, storage_error) && storage_error.find("hard links") != std::string::npos, "rejects hard-linked storage files before truncation");
+        storage_error.clear();
+        expect(ffc::read_private_file(storage_file, storage_content, storage_error) == false, "refuses to read hard-linked storage files");
+        expect(unlink(linked_storage_file.c_str()) == 0, "removes the storage hard-link fixture");
+        storage_error.clear(); storage_content.clear();
+        expect(ffc::read_private_file(storage_file, storage_content, storage_error) && storage_content == "original", "preserves original content when an unsafe overwrite is rejected");
+        expect(ffc::secure_local_path(ffc::LocalStorageArea::Config, "../escape", false, storage_error).empty(), "rejects storage filename traversal");
+        expect(ffc::secure_local_path(ffc::LocalStorageArea::State, std::string("embedded\0name", 13), false, storage_error).empty(), "rejects storage filenames with embedded null bytes");
+        std::filesystem::remove_all(storage_directory);
+    }
     expect(ffc::parse_command_line({}).action == ffc::CommandAction::Interactive, "parses interactive command");
     const auto enrich_command = ffc::parse_command_line({"--network-metadata", "--enrich"});
     expect(enrich_command.action == ffc::CommandAction::NetworkMetadata && enrich_command.enrich_metadata, "parses metadata enrichment command");

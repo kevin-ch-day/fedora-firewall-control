@@ -64,7 +64,11 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
         setenv("PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1);
         setenv("LC_ALL", "C", 1);
         setenv("LANG", "C", 1);
-        dup2(input_pipe[0], STDIN_FILENO); dup2(out_pipe[1], STDOUT_FILENO); dup2(err_pipe[1], STDERR_FILENO);
+        if (dup2(input_pipe[0], STDIN_FILENO) < 0 ||
+            dup2(out_pipe[1], STDOUT_FILENO) < 0 ||
+            dup2(err_pipe[1], STDERR_FILENO) < 0) {
+            _exit(127);
+        }
         close(input_pipe[0]); close(input_pipe[1]); close(out_pipe[0]); close(out_pipe[1]); close(err_pipe[0]); close(err_pipe[1]);
         std::vector<char*> argv; argv.reserve(arguments.size() + 1);
         for (const auto& argument : arguments) argv.push_back(const_cast<char*>(argument.c_str()));
@@ -121,11 +125,24 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
             if (errno == EINTR) continue;
             output_failed = true;
             err += (err.empty() ? "" : "\n") + std::string("command output polling failed: ") + std::strerror(errno);
-            if (!terminated) { kill(pid, SIGKILL); terminated = true; }
-            continue;
+            if (!terminated) kill(pid, SIGKILL);
+            for (auto& descriptor : fds) {
+                if (descriptor.fd >= 0) close(descriptor.fd);
+                descriptor.fd = -1;
+            }
+            break;
         }
         for (auto& descriptor : fds) {
-            if (descriptor.fd < 0 || !(descriptor.revents & (POLLIN | POLLHUP))) continue;
+            if (descriptor.fd < 0 || descriptor.revents == 0) continue;
+            if (descriptor.revents & POLLNVAL) {
+                output_failed = true;
+                err += (err.empty() ? "" : "\n");
+                err += "command output descriptor became invalid";
+                if (!terminated) { kill(pid, SIGKILL); terminated = true; }
+                close(descriptor.fd); descriptor.fd = -1; --open_fds;
+                continue;
+            }
+            if (!(descriptor.revents & (POLLIN | POLLHUP | POLLERR))) continue;
             std::array<char, 4096> buffer{};
             const ssize_t count = read(descriptor.fd, buffer.data(), buffer.size());
             if (count > 0) {

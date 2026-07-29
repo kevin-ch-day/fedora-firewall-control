@@ -1,1 +1,52 @@
+# CMake, Ninja, and local build trees
 /build/
+/build-*/
+/cmake-build-*/
+/out/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+Testing/
+
+# Native build products and dependency files
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.d
+
+# Coverage, profiling, and sanitizer artifacts
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+/coverage/
+
+# Local packages and diagnostics
+*.rpm
+*.log
+/core
+/core.*
+
+# Editor and operating-system state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+.secrets/
+ipify.key

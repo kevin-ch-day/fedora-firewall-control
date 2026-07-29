@@ -10,6 +10,12 @@
 
 namespace ffc {
 namespace {
+bool safe_filename(const std::string& filename) {
+    return !filename.empty() && filename != "." && filename != ".." &&
+           filename.find_first_of("/\\\\") == std::string::npos &&
+           filename.find('\0') == std::string::npos;
+}
+
 bool private_directory(const std::filesystem::path& directory, std::string& error) {
     struct stat status {};
     if (lstat(directory.c_str(), &status) != 0) { error = std::strerror(errno); return false; }
@@ -23,11 +29,13 @@ bool private_regular_file(int descriptor, std::string& error) {
     if (fstat(descriptor, &status) != 0) { error = std::strerror(errno); return false; }
     if (!S_ISREG(status.st_mode)) { error = "storage path is not a regular file"; return false; }
     if (status.st_uid != geteuid()) { error = "storage file is not owned by the current user"; return false; }
+    if (status.st_nlink != 1) { error = "storage file must not have hard links"; return false; }
     return true;
 }
 } // namespace
 
 std::string secure_local_path(LocalStorageArea area, const std::string& filename, bool create_directory, std::string& error) {
+    if (!safe_filename(filename)) { error = "storage filename is unsafe"; return {}; }
     const char* xdg = std::getenv(area == LocalStorageArea::Config ? "XDG_CONFIG_HOME" : "XDG_STATE_HOME");
     const char* home = std::getenv("HOME");
     std::filesystem::path directory;
@@ -44,19 +52,25 @@ std::string secure_local_path(LocalStorageArea area, const std::string& filename
 }
 
 bool write_private_file(const std::string& path, const std::string& content, bool append, std::string& error) {
-    const int flags = O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW | (append ? O_APPEND : O_TRUNC);
+    // Do not truncate before checking ownership and file type. Otherwise a
+    // caller could lose data if a path was replaced between lookups.
+    const int flags = O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW | (append ? O_APPEND : 0);
     const int descriptor = open(path.c_str(), flags, S_IRUSR | S_IWUSR);
     if (descriptor < 0) { error = std::strerror(errno); return false; }
     bool success = private_regular_file(descriptor, error) && fchmod(descriptor, S_IRUSR | S_IWUSR) == 0;
     if (!success && error.empty()) error = std::strerror(errno);
+    if (success && !append && (ftruncate(descriptor, 0) != 0 || lseek(descriptor, 0, SEEK_SET) < 0)) {
+        success = false; error = std::strerror(errno);
+    }
     const char* remaining = content.data(); std::size_t bytes = content.size();
     while (success && bytes > 0) {
         const ssize_t written = write(descriptor, remaining, bytes);
-        if (written <= 0) { success = false; error = std::strerror(errno); break; }
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) { success = false; error = written == 0 ? "storage write made no progress" : std::strerror(errno); break; }
         remaining += written; bytes -= static_cast<std::size_t>(written);
     }
     if (success && fsync(descriptor) != 0) { success = false; error = std::strerror(errno); }
-    close(descriptor);
+    if (close(descriptor) != 0 && success) { success = false; error = std::strerror(errno); }
     return success;
 }
 
@@ -67,6 +81,7 @@ bool read_private_file(const std::string& path, std::string& content, std::strin
     content.clear(); char buffer[4096];
     while (true) {
         const ssize_t count = read(descriptor, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
         if (count < 0) { error = std::strerror(errno); close(descriptor); return false; }
         if (count == 0) break;
         if (content.size() + static_cast<std::size_t>(count) > maximum_bytes) { error = "storage file exceeds safe size limit"; close(descriptor); return false; }
