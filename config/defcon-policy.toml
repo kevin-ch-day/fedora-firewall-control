@@ -1,0 +1,4 @@
+# Reserved for a future, reviewed lockdown policy. Version 0.1.0 is read-only.
+[policy]
+name = "defcon"
+mode = "read-only"
