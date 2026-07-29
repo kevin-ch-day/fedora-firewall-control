@@ -33,6 +33,22 @@ bool private_regular_file(int descriptor, std::string& error) {
     if (status.st_nlink != 1) { error = "storage file must not have hard links"; return false; }
     return true;
 }
+
+bool write_all(const int descriptor, const std::string& content, std::string& error) {
+    const char* remaining = content.data();
+    std::size_t bytes = content.size();
+    while (bytes > 0) {
+        const ssize_t written = write(descriptor, remaining, bytes);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) {
+            error = written == 0 ? "storage write made no progress" : std::strerror(errno);
+            return false;
+        }
+        remaining += written;
+        bytes -= static_cast<std::size_t>(written);
+    }
+    return true;
+}
 } // namespace
 
 std::string secure_local_path(LocalStorageArea area, const std::string& filename, bool create_directory, std::string& error) {
@@ -63,15 +79,84 @@ bool write_private_file(const std::string& path, const std::string& content, boo
     if (success && !append && (ftruncate(descriptor.get(), 0) != 0 || lseek(descriptor.get(), 0, SEEK_SET) < 0)) {
         success = false; error = std::strerror(errno);
     }
-    const char* remaining = content.data(); std::size_t bytes = content.size();
-    while (success && bytes > 0) {
-        const ssize_t written = write(descriptor.get(), remaining, bytes);
-        if (written < 0 && errno == EINTR) continue;
-        if (written <= 0) { success = false; error = written == 0 ? "storage write made no progress" : std::strerror(errno); break; }
-        remaining += written; bytes -= static_cast<std::size_t>(written);
-    }
+    if (success && !write_all(descriptor.get(), content, error)) success = false;
     if (success && fsync(descriptor.get()) != 0) { success = false; error = std::strerror(errno); }
     if (success && !descriptor.close(error)) success = false;
+    return success;
+}
+
+bool replace_private_file_atomically(const std::string& path, const std::string& content,
+                                     std::string& error) {
+    const auto separator = path.find_last_of('/');
+    if (separator == std::string::npos || separator + 1U == path.size()) {
+        error = "storage replacement path is invalid";
+        return false;
+    }
+    const std::string directory = separator == 0U ? "/" : path.substr(0, separator);
+    const std::string filename = path.substr(separator + 1U);
+    if (directory == "/" || !safe_filename(filename) || !private_directory(directory, error)) {
+        if (error.empty()) error = "storage replacement directory is unsafe";
+        return false;
+    }
+
+    UniqueFileDescriptor directory_descriptor{
+        open(directory.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC)};
+    if (!directory_descriptor) {
+        error = std::strerror(errno);
+        return false;
+    }
+    struct stat existing {};
+    if (fstatat(directory_descriptor.get(), filename.c_str(), &existing, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (!S_ISREG(existing.st_mode) || S_ISLNK(existing.st_mode) ||
+            existing.st_uid != geteuid() || existing.st_nlink != 1) {
+            error = "storage file is not a private regular file";
+            return false;
+        }
+    } else if (errno != ENOENT) {
+        error = std::strerror(errno);
+        return false;
+    }
+
+    std::string temporary;
+    UniqueFileDescriptor temporary_descriptor;
+    for (unsigned int attempt = 0; attempt < 128U; ++attempt) {
+        temporary = "." + filename + ".tmp." + std::to_string(getpid()) + "." +
+                    std::to_string(attempt);
+        temporary_descriptor = UniqueFileDescriptor{openat(
+            directory_descriptor.get(), temporary.c_str(),
+            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR)};
+        if (temporary_descriptor) break;
+        if (errno != EEXIST) {
+            error = std::strerror(errno);
+            return false;
+        }
+    }
+    if (!temporary_descriptor) {
+        error = "could not allocate private replacement file";
+        return false;
+    }
+    bool success = private_regular_file(temporary_descriptor.get(), error) &&
+                   fchmod(temporary_descriptor.get(), S_IRUSR | S_IWUSR) == 0;
+    if (!success && error.empty()) error = std::strerror(errno);
+    if (success && !write_all(temporary_descriptor.get(), content, error)) success = false;
+    if (success && fsync(temporary_descriptor.get()) != 0) {
+        error = std::strerror(errno);
+        success = false;
+    }
+    if (success && !temporary_descriptor.close(error)) success = false;
+    if (success && renameat(directory_descriptor.get(), temporary.c_str(), directory_descriptor.get(),
+                            filename.c_str()) != 0) {
+        error = std::strerror(errno);
+        success = false;
+    }
+    if (success && fsync(directory_descriptor.get()) != 0) {
+        error = std::strerror(errno);
+        success = false;
+    }
+    if (!success && temporary_descriptor)
+        (void)temporary_descriptor.close(error);
+    if (!success)
+        unlinkat(directory_descriptor.get(), temporary.c_str(), 0);
     return success;
 }
 

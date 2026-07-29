@@ -1,0 +1,25 @@
+execute_process(
+  COMMAND "@CMAKE_CURRENT_BINARY_DIR@/ffc" --snapshot-json
+  OUTPUT_VARIABLE snapshot
+  ERROR_VARIABLE diagnostics
+  RESULT_VARIABLE snapshot_result
+)
+if(NOT snapshot_result EQUAL 0)
+  message(FATAL_ERROR "snapshot command failed: ${diagnostics}")
+endif()
+if(NOT diagnostics STREQUAL "")
+  message(FATAL_ERROR "snapshot command wrote diagnostics to stderr: ${diagnostics}")
+endif()
+set(snapshot_path "@CMAKE_CURRENT_BINARY_DIR@/dashboard-contract.json")
+file(WRITE "${snapshot_path}" "${snapshot}")
+execute_process(
+  COMMAND "@FFC_JQ_PROGRAM@" -e
+    ".schema == \"ffc.dashboard.v1\" and .schema_version == 1 and (.snapshot_id | type == \"number\") and (.firewall.active_status | IN(\"available\", \"partial\", \"unavailable\")) and (.network.network_manager.device_inventory_status | IN(\"available\", \"partial\", \"unavailable\")) and (.network.network_manager.profile_inventory_status == \"unavailable\") and (.network.vpn_route.status == \"unavailable\") and (.network.vpn_route.uses_tunnel == null) and (.evidence.components | type == \"array\") and (.recommendation.destination | type == \"string\")"
+    "${snapshot_path}"
+  RESULT_VARIABLE validation_result
+  OUTPUT_QUIET
+  ERROR_VARIABLE validation_error
+)
+if(NOT validation_result EQUAL 0)
+  message(FATAL_ERROR "dashboard JSON contract validation failed: ${validation_error}")
+endif()

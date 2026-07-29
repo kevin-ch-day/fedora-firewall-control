@@ -1,0 +1,25 @@
+set(ffc_stage "@CMAKE_CURRENT_BINARY_DIR@/verify-install-alias")
+file(REMOVE_RECURSE "${ffc_stage}")
+
+execute_process(
+  COMMAND "@CMAKE_COMMAND@" --install "@CMAKE_CURRENT_BINARY_DIR@" --prefix "${ffc_stage}"
+  RESULT_VARIABLE ffc_install_result
+  OUTPUT_VARIABLE ffc_install_output
+  ERROR_VARIABLE ffc_install_error
+)
+if(NOT ffc_install_result EQUAL 0)
+  message(FATAL_ERROR "Installation failed: ${ffc_install_output}${ffc_install_error}")
+endif()
+
+set(ffc_binary "${ffc_stage}/@CMAKE_INSTALL_BINDIR@/fedora-firewall-control")
+set(ffc_alias "${ffc_stage}/@CMAKE_INSTALL_BINDIR@/ffc")
+if(NOT EXISTS "${ffc_binary}")
+  message(FATAL_ERROR "Installed executable is missing: ${ffc_binary}")
+endif()
+if(NOT IS_SYMLINK "${ffc_alias}")
+  message(FATAL_ERROR "Installed ffc alias is missing or not a symlink: ${ffc_alias}")
+endif()
+file(READ_SYMLINK "${ffc_alias}" ffc_alias_target)
+if(NOT ffc_alias_target STREQUAL "fedora-firewall-control")
+  message(FATAL_ERROR "Installed ffc alias has unexpected target: ${ffc_alias_target}")
+endif()

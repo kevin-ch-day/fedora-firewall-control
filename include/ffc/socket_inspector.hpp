@@ -17,7 +17,7 @@ struct ListeningSocket {
 struct SocketState {
     bool available{false};
     std::vector<ListeningSocket> listeners;
-    bool process_metadata_query_succeeded{false};
+    bool process_metadata_requested{false};
     std::string diagnostic;
 };
 

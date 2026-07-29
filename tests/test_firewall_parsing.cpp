@@ -9,6 +9,7 @@
 #include "ffc/socket_inspector.hpp"
 #include "ffc/vpn.hpp"
 
+#include <string>
 #include <vector>
 
 namespace ffc::test {
@@ -118,8 +119,65 @@ void run_firewall_parsing_tests() {
     }
     expect(
         unavailable_runtime.runtime_zones_status == ObservationStatus::Unavailable &&
-            !active_zone_details_available(unavailable_runtime) && exposure_unknown &&
+               !applicable_zone_details_available(unavailable_runtime) && exposure_unknown &&
             target_unknown && drift_unknown,
         "records failed runtime-zone collection as unavailable rather than an empty safe policy");
+
+    const SequencedCommandRunner malformed_runner(
+        {{0, "1.0\n", {}},
+         {0, "running\n", {}},
+         {0, "enabled\n", {}},
+         {1, "no\n", {}},
+         {0, {}, {}},
+         {0, "not-a-log-setting\n", {}},
+         {0, "public extra\n", {}},
+         {0, "garbage\n", {}},
+         {0, "garbage\n", {}}});
+    const FirewalldCommandBackend malformed_backend(malformed_runner);
+    const auto malformed = malformed_backend.inspect(PostureCollectionDepth::Landing);
+    expect(malformed.denied_logging_status == ObservationStatus::Partial &&
+               malformed.default_zone_status == ObservationStatus::Partial &&
+               malformed.active_zones_status == ObservationStatus::Partial &&
+               malformed.runtime_zones_status == ObservationStatus::Partial,
+           "does not treat successful but malformed firewall output as usable evidence");
+    const auto malformed_boolean =
+        parse_zone_info("target: default\nmasquerade: perhaps\nforward: yes\n");
+    expect(!malformed_boolean.details_valid,
+           "marks malformed firewalld yes-or-no zone fields as invalid rather than disabled");
+    const SequencedCommandRunner malformed_boolean_runner(
+        {{0, "1.0\n", {}},
+         {0, "running\n", {}},
+         {0, "enabled\n", {}},
+         {1, "no\n", {}},
+         {0, {}, {}},
+         {0, "off\n", {}},
+         {0, "public\n", {}},
+         {0, "public\n interfaces: enp1s0\n", {}},
+         {0, "public\n target: default\n masquerade: perhaps\n", {}}});
+    const FirewalldCommandBackend malformed_boolean_backend(malformed_boolean_runner);
+    expect(malformed_boolean_backend.inspect(PostureCollectionDepth::Landing).runtime_zones_status ==
+               ObservationStatus::Partial,
+           "does not promote malformed zone Boolean fields to available runtime policy evidence");
+
+    const SequencedCommandRunner failed_journal_runner(
+        {{1, "-- No entries --\n", "permission denied"}, {0, "-- No entries --\n", {}}});
+    const SecuritySignalsInspector failed_journals(failed_journal_runner);
+    const auto failed_journal_state = failed_journals.inspect();
+    expect(!failed_journal_state.kernel_journal_available &&
+               failed_journal_state.kernel_journal_status == JournalQueryStatus::Unavailable &&
+               failed_journal_state.firewalld_journal_available,
+           "does not mistake an error response containing no-entries text for journal evidence");
+
+    std::string bounded_kernel_output;
+    for (unsigned int index = 0; index < 200U; ++index)
+        bounded_kernel_output += "DROP SRC=192.0.2.1 DPT=22\n";
+    const SequencedCommandRunner bounded_journal_runner(
+        {{0, bounded_kernel_output, {}}, {0, bounded_kernel_output, {}}});
+    const SecuritySignalsInspector bounded_journals(bounded_journal_runner);
+    const auto bounded_journal_state = bounded_journals.inspect();
+    expect(bounded_journal_state.kernel_journal_status == JournalQueryStatus::Partial &&
+               bounded_journal_state.firewalld_journal_status == JournalQueryStatus::Partial &&
+               bounded_journal_state.kernel_drop_or_reject_events == 200U,
+           "marks journal results at the bounded limit as partial lower-bound evidence");
 }
 } // namespace ffc::test

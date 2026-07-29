@@ -6,12 +6,20 @@
 #include <string>
 
 namespace ffc {
+enum class JournalQueryStatus { Unavailable, Partial, Available };
+
+[[nodiscard]] bool journal_query_available(JournalQueryStatus status);
+
 struct SecuritySignalsState {
     bool kernel_journal_available{false};
+    JournalQueryStatus kernel_journal_status{JournalQueryStatus::Unavailable};
+    bool kernel_journal_truncated{false};
     std::size_t kernel_drop_or_reject_events{0};
     std::size_t kernel_denial_unique_sources{0};
     std::size_t kernel_denial_unique_destination_ports{0};
     bool firewalld_journal_available{false};
+    JournalQueryStatus firewalld_journal_status{JournalQueryStatus::Unavailable};
+    bool firewalld_journal_truncated{false};
     std::size_t firewalld_service_events{0};
     std::string diagnostic;
 };

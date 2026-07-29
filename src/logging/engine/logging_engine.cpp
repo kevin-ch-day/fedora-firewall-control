@@ -67,17 +67,27 @@ bool LoggingEngine::record(const LogEvent& event, std::string* error) const {
     if (!lock.acquire(lock_path, storage_error)) { if (error != nullptr) *error = storage_error; return false; }
 
     std::string existing;
-    if (!read_private_file(path, existing, storage_error, maximum_log_bytes)) {
-        // A missing log starts empty. A full log is rotated in place; unsafe
-        // storage still fails closed when write_private_file validates it.
-        existing = storage_error == "storage file exceeds safe size limit" ?
-            format_log_event({event.channel, LogLevel::Info, "log-rotation", "retained log exceeded 512 KiB limit"}) : std::string{};
+    if (!read_private_file(path, existing, storage_error, maximum_log_bytes) &&
+        storage_error != "No such file or directory" &&
+        storage_error != "storage file exceeds safe size limit") {
+        if (error != nullptr) *error = storage_error;
+        return false;
     }
     const std::string entry = format_log_event(event);
-    if (existing.size() + entry.size() > maximum_log_bytes) {
-        existing = format_log_event({event.channel, LogLevel::Info, "log-rotation", "retained log reached 512 KiB limit"});
+    const bool rotate = storage_error == "storage file exceeds safe size limit" ||
+                        existing.size() + entry.size() > maximum_log_bytes;
+    if (rotate) {
+        const std::string replacement =
+            format_log_event({event.channel, LogLevel::Info, "log-rotation",
+                              "retained log reached 512 KiB limit"}) +
+            entry;
+        if (!replace_private_file_atomically(path, replacement, storage_error)) {
+            if (error != nullptr) *error = storage_error;
+            return false;
+        }
+        return true;
     }
-    if (!write_private_file(path, existing + entry, false, storage_error)) {
+    if (!write_private_file(path, entry, true, storage_error)) {
         if (error != nullptr) *error = storage_error;
         return false;
     }

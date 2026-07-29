@@ -5,7 +5,7 @@
 
 namespace ffc {
 namespace {
-bool no_entries(const std::string& output) { return output.find("-- No entries --") != std::string::npos; }
+constexpr std::size_t journal_limit = 200;
 
 std::string field_value(const std::string& line, const std::string& key) {
     const auto first = line.find(key);
@@ -14,6 +14,11 @@ std::string field_value(const std::string& line, const std::string& key) {
     const auto value_end = line.find_first_of(" \t\n", value_start);
     return line.substr(value_start, value_end == std::string::npos ? std::string::npos : value_end - value_start);
 }
+
+}
+
+bool journal_query_available(const JournalQueryStatus status) {
+    return status == JournalQueryStatus::Available;
 }
 
 std::size_t count_journal_entries(const std::string& journal_output) {
@@ -42,19 +47,29 @@ KernelDenialSummary summarize_kernel_denials(const std::string& journal_output) 
 SecuritySignalsState SecuritySignalsInspector::inspect() const {
     SecuritySignalsState state;
     const auto kernel = runner_.run({"journalctl", "-k", "--no-pager", "--since=-24h", "--grep=DROP|REJECT", "-n", "200"});
-    state.kernel_journal_available = kernel.success() || no_entries(kernel.stdout_text);
-    if (state.kernel_journal_available) {
+    if (kernel.success()) {
         const auto summary = summarize_kernel_denials(kernel.stdout_text);
         state.kernel_drop_or_reject_events = summary.event_count;
         state.kernel_denial_unique_sources = summary.unique_sources;
         state.kernel_denial_unique_destination_ports = summary.unique_destination_ports;
+        state.kernel_journal_truncated = summary.event_count >= journal_limit;
+        state.kernel_journal_status = state.kernel_journal_truncated ? JournalQueryStatus::Partial
+                                                                      : JournalQueryStatus::Available;
+        state.kernel_journal_available = journal_query_available(state.kernel_journal_status);
+    } else {
+        state.diagnostic = kernel.stderr_text.empty() ? "kernel journal query failed" : kernel.stderr_text;
     }
-    else state.diagnostic = kernel.stderr_text.empty() ? "kernel journal query failed" : kernel.stderr_text;
 
     const auto firewalld = runner_.run({"journalctl", "-u", "firewalld.service", "--no-pager", "--since=-24h", "-n", "200"});
-    state.firewalld_journal_available = firewalld.success() || no_entries(firewalld.stdout_text);
-    if (state.firewalld_journal_available) state.firewalld_service_events = count_journal_entries(firewalld.stdout_text);
-    else if (state.diagnostic.empty()) state.diagnostic = firewalld.stderr_text.empty() ? "firewalld journal query failed" : firewalld.stderr_text;
+    if (firewalld.success()) {
+        state.firewalld_service_events = count_journal_entries(firewalld.stdout_text);
+        state.firewalld_journal_truncated = state.firewalld_service_events >= journal_limit;
+        state.firewalld_journal_status = state.firewalld_journal_truncated ? JournalQueryStatus::Partial
+                                                                            : JournalQueryStatus::Available;
+        state.firewalld_journal_available = journal_query_available(state.firewalld_journal_status);
+    } else if (state.diagnostic.empty()) {
+        state.diagnostic = firewalld.stderr_text.empty() ? "firewalld journal query failed" : firewalld.stderr_text;
+    }
     return state;
 }
 } // namespace ffc

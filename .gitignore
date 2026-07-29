@@ -29,6 +29,9 @@ Testing/
 *.profraw
 *.profdata
 /coverage/
+/web/node_modules/
+/web/dist/
+/web/coverage/
 
 # Local packages and diagnostics
 *.rpm

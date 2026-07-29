@@ -17,6 +17,10 @@ void run_port_command_tests() {
     expect(identify_port_spec(ephemeral_port).likely_service == "mDNS discovery", "accepts non-owning string views for port intelligence lookups");
     expect(is_valid_ipify_api_key("at_example_key-123") && !is_valid_ipify_api_key("") && !is_valid_ipify_api_key("contains a space"), "validates Geo ipify API key format");
     expect(parse_operating_mode("hostile") == OperatingMode::HostileNetwork && !parse_operating_mode("unsafe"), "returns typed operating-mode parse results without output parameters");
-    expect(command_action_name(CommandAction::ThreatAssessment) == "threat-assessment" && parse_command_line({"--log-analysis"}).action == CommandAction::LogAnalysis && parse_command_line({"--network-diagnostics", "--unknown"}).action == CommandAction::Invalid, "parses typed commands without retaining raw arguments");
+    expect(command_action_name(CommandAction::ThreatAssessment) == "threat-assessment" &&
+               parse_command_line({"--log-analysis"}).action == CommandAction::LogAnalysis &&
+               parse_command_line({"--snapshot-json"}).action == CommandAction::SnapshotJson &&
+               parse_command_line({"--network-diagnostics", "--unknown"}).action == CommandAction::Invalid,
+           "parses typed commands without retaining raw arguments");
 }
 } // namespace ffc::test

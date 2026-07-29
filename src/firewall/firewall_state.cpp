@@ -1,6 +1,7 @@
 #include "ffc/firewall_state.hpp"
 
 #include <algorithm>
+#include <set>
 #include <sstream>
 
 namespace ffc {
@@ -57,7 +58,10 @@ ZoneState parse_zone_info(const std::string &text) {
         reading_forward_ports = key == "forward-ports";
         if (key == "target") {
             const auto values = split_words(value);
-            zone.target = values.empty() ? "" : values.front();
+            if (values.size() == 1U)
+                zone.target = values.front();
+            else
+                zone.details_valid = false;
         } else if (key == "interfaces")
             zone.interfaces = split_words(value);
         else if (key == "sources")
@@ -75,10 +79,18 @@ ZoneState parse_zone_info(const std::string &text) {
         else if (key == "rich rules") {
             if (!value.empty() && value.find_first_not_of(" \t") != std::string::npos)
                 zone.rich_rules.push_back(value);
-        } else if (key == "masquerade")
-            zone.masquerade = value.find("yes") != std::string::npos;
-        else if (key == "forward")
-            zone.forward = value.find("yes") != std::string::npos;
+        } else if (key == "masquerade" || key == "forward") {
+            const auto values = split_words(value);
+            if (values.size() != 1U || (values.front() != "yes" && values.front() != "no")) {
+                zone.details_valid = false;
+                continue;
+            }
+            const bool enabled = values.front() == "yes";
+            if (key == "masquerade")
+                zone.masquerade = enabled;
+            else
+                zone.forward = enabled;
+        }
     }
     return zone;
 }
@@ -182,7 +194,8 @@ bool zone_policy_values_equal(const ZoneState &left, const ZoneState &right) {
            unordered_values_equal(left.source_ports, right.source_ports) &&
            left.rich_rules == right.rich_rules &&
            unordered_values_equal(left.forward_ports, right.forward_ports) &&
-           left.masquerade == right.masquerade && left.forward == right.forward;
+           left.masquerade == right.masquerade && left.forward == right.forward &&
+           left.details_valid == right.details_valid;
 }
 } // namespace
 
@@ -200,6 +213,50 @@ bool is_zone_active(const FirewallState &state, const std::string_view zone) {
     return state.active_zone_interfaces.contains(name) || state.active_zone_sources.contains(name);
 }
 
+bool is_connected_transport_device(const NetworkDeviceState& device) {
+    if (device.state.rfind("connected", 0) != 0)
+        return false;
+    return device.type != "loopback" && device.type != "wireguard" && device.type != "tun" &&
+           device.type != "vpn";
+}
+
+std::vector<std::string> applicable_zone_names(const FirewallState &state) {
+    std::set<std::string> zones;
+    for (const auto &[zone, ignored] : state.active_zone_interfaces) {
+        (void)ignored;
+        zones.insert(zone);
+    }
+    for (const auto &[zone, ignored] : state.active_zone_sources) {
+        (void)ignored;
+        zones.insert(zone);
+    }
+
+    bool default_zone_applies = !state.network_manager.available;
+    if (state.network_manager.available) {
+        for (const auto &device : state.network_manager.devices) {
+            if (!is_connected_transport_device(device))
+                continue;
+            bool explicitly_bound = false;
+            for (const auto &[zone, interfaces] : state.active_zone_interfaces) {
+                (void)zone;
+                explicitly_bound = explicitly_bound ||
+                                   std::find(interfaces.begin(), interfaces.end(),
+                                             device.interface_name) != interfaces.end();
+            }
+            default_zone_applies = default_zone_applies || !explicitly_bound;
+        }
+    }
+    if (default_zone_applies && observation_available(state.default_zone_status) &&
+        !state.default_zone.empty())
+        zones.insert(state.default_zone);
+    return {zones.begin(), zones.end()};
+}
+
+bool is_zone_applicable(const FirewallState &state, const std::string_view zone) {
+    const auto names = applicable_zone_names(state);
+    return std::find(names.begin(), names.end(), zone) != names.end();
+}
+
 std::size_t active_zone_member_count(const FirewallState &state, const std::string_view zone) {
     const std::string name{zone};
     const auto interface_count = state.active_zone_interfaces.contains(name)
@@ -210,17 +267,12 @@ std::size_t active_zone_member_count(const FirewallState &state, const std::stri
     return interface_count + source_count;
 }
 
-bool active_zone_details_available(const FirewallState &state) {
+bool applicable_zone_details_available(const FirewallState &state) {
     if (!observation_available(state.active_zones_status) ||
-        !observation_available(state.runtime_zones_status))
+        !observation_available(state.runtime_zones_status) ||
+        !observation_available(state.default_zone_status))
         return false;
-    for (const auto &[zone, ignored] : state.active_zone_interfaces) {
-        (void)ignored;
-        if (!state.runtime_zones.contains(zone))
-            return false;
-    }
-    for (const auto &[zone, ignored] : state.active_zone_sources) {
-        (void)ignored;
+    for (const auto &zone : applicable_zone_names(state)) {
         if (!state.runtime_zones.contains(zone))
             return false;
     }

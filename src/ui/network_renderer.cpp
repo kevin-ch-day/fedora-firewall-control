@@ -50,12 +50,8 @@ void NetworkRenderer::show_history(const std::vector<std::string> &records,
               << ui_.muted("timestamp (UTC)  public IP  interface  gateway  profile  "
                            "SSID  BSSID  security  country  timezone  ISP  ASN  VPN")
               << '\n';
-    for (auto record : records) {
-        for (auto &character : record)
-            if (character == '\t')
-                character = ' ';
-        std::cout << "  " << record << '\n';
-    }
+    for (const auto& record : records)
+        std::cout << "  " << sanitize_terminal_text(record) << '\n';
 }
 void NetworkRenderer::show_diagnostics(const NetworkDiagnostics &diagnostics) const {
     render_network_diagnostics(ui_, diagnostics);

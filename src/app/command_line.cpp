@@ -11,6 +11,7 @@ CommandLine parse_command_line(const std::vector<std::string>& arguments) {
         const auto& argument = arguments.front();
         if (argument == "--help") return make_command(CommandAction::Help);
         if (argument == "--status") return make_command(CommandAction::Status);
+        if (argument == "--snapshot-json") return make_command(CommandAction::SnapshotJson);
         if (argument == "--readiness") return make_command(CommandAction::Readiness);
         if (argument == "--listeners") return make_command(CommandAction::Listeners);
         if (argument == "--threat-assessment") return make_command(CommandAction::ThreatAssessment);
@@ -39,6 +40,7 @@ std::string command_action_name(CommandAction action) {
         case CommandAction::Interactive: return "interactive";
         case CommandAction::Help: return "help";
         case CommandAction::Status: return "status";
+        case CommandAction::SnapshotJson: return "snapshot-json";
         case CommandAction::Readiness: return "readiness";
         case CommandAction::Listeners: return "listeners";
         case CommandAction::ThreatAssessment: return "threat-assessment";

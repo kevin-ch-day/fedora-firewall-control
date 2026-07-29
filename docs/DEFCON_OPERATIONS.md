@@ -14,7 +14,7 @@ NO_COLOR=1 ./build/ffc --readiness
 
 To intentionally record the observed public IP, default interface, gateway, and VPN-active state, run `./build/ffc --network-metadata`. This contacts `api64.ipify.org`; the provider receives your public IP and request time. The local history is written with owner-only permissions under `$XDG_STATE_HOME/fedora-firewall-control/` or `~/.local/state/fedora-firewall-control/`. Review it with `./build/ffc --network-history`.
 
-That explicit capture also records the active NetworkManager connection profile and, for an active Wi-Fi network, its SSID, BSSID, and advertised security. These fields are intentionally absent from the routine dashboard. SSIDs and BSSIDs are sensitive location and tracking data; only capture them when you want an evidence record.
+That explicit capture also records the active NetworkManager connection profile and, for an active Wi-Fi network, its SSID, BSSID, and advertised security. These fields are intentionally absent from the routine dashboard. SSIDs and BSSIDs are sensitive location and tracking data; only capture them when you want an evidence record. History is retained locally as the newest 512 records within a 256 KiB bound; older observations are compacted when that limit is reached.
 
 For an explicit reachability and path test, run `./build/ffc --network-diagnostics`. It sends two ICMP echo requests to each of `1.1.1.1` and `8.8.8.8`, followed by a numeric traceroute to `1.1.1.1` limited to eight hops and one query per hop. `--extended` compares four public-resolver paths. Use `--advanced` only when the additional traffic is justified: it adds a five-sample MTR report to `1.1.1.1` and one direct `example.com` lookup each to Cloudflare, Google, and Quad9. Resolver operators receive that query and your source address. This traffic is never part of the ordinary refresh. Timed-out probes or hops can be normal filtering; in particular, MTR loss at an intermediate hop is not end-to-end loss when the destination reports no loss.
 
@@ -28,15 +28,15 @@ Use `./build/ffc --mode hostile` before a DEF CON, hotel, conference, or other u
 
 Treat a readiness exit status of `1` as a review signal and `2` as a failed posture check. Re-run the report after changing networks, resuming from sleep, connecting a VPN, or returning from an event venue.
 
-Readiness exit codes express policy assessment, not merely whether the application launched. An unavailable or partial core firewall observation produces a warning rather than a clean result. The report treats interface-bound and source-bound zones as active, compares runtime and permanent zones in both directions, and warns whenever active policy details or other firewalld policy surfaces remain outside collection.
+Readiness exit codes express policy assessment, not merely whether the application launched. An unavailable or partial core firewall observation produces a warning rather than a clean result. The report evaluates interface-bound and source-bound zones plus the default zone that applies to an unbound connected interface. It compares runtime and permanent zones in both directions, treats any applicable rich rule as exposure requiring review, and warns whenever active policy details are outside collection. Static collection scope limits remain visible as `INFO`; exit `0` means no modeled warning or failure, not complete verification of every firewalld surface.
 
 ## What to review
 
 - Active interfaces and zone assignments, rather than every configured zone.
 - NetworkManager device state without printing connection names or Wi-Fi SSIDs. Recheck it after suspend, venue changes, and VPN transitions; a connected device without an active-zone binding deserves investigation.
-- Any allowed service, explicit port, rich rule, or forward-port in an active zone.
+- Any allowed service, explicit port, rich rule, or forward-port in an applicable zone. Rich rules are counted but not fully parsed, so review their exact semantics before treating a posture as ready.
 - Protocol and source-port selectors in an active zone. They are policy selectors, not proof that a service is listening.
-- Network-reachable local listening sockets. This is intentionally a separate signal: a firewall exception without a listener has different risk from a listening process that becomes reachable after a zone or network change.
+- TCP/UDP non-multicast local listeners and the separate multicast-listener signal. This is intentionally a separate signal: a firewall exception without a listener has different risk from a listening process that becomes reachable after a zone or network change. The listener query does not prove absence of SCTP, DCCP, raw, or other protocol sockets.
 - An active zone with target `ACCEPT`; it accepts otherwise-unmatched traffic.
 - Intra-zone forwarding, masquerading, and source bindings, which can alter traffic flow or trust.
 - Runtime/permanent drift. A firewalld reload replaces runtime configuration with permanent configuration, so do not assume a tested runtime posture will survive a reload.
@@ -47,7 +47,7 @@ Do not automatically reassign a VPN or tunnel interface. Review it separately: f
 
 ## Interpreting threat signals
 
-`ffc` cannot identify a hotel, DEF CON, a red team, or a specific threat actor from local host state. A connected Wi-Fi interface is a cue to review zone assignment and exposure, not proof that a network is hostile. Kernel `DROP`/`REJECT` journal entries are likewise evidence to investigate, not attribution; their availability depends on local logging configuration and journal access. Keep denied-packet logging decisions explicit because more logging can create a large volume of local data.
+`ffc` cannot identify a hotel, DEF CON, a red team, or a specific threat actor from local host state. A connected Wi-Fi interface is a cue to review zone assignment and exposure, not proof that a network is hostile. Kernel `DROP`/`REJECT` journal entries are likewise evidence to investigate, not attribution; their availability depends on local logging configuration and journal access. A displayed `at least 200` journal count is intentionally a truncated lower bound. Keep denied-packet logging decisions explicit because more logging can create a large volume of local data.
 
 ## Emergency isolation
 

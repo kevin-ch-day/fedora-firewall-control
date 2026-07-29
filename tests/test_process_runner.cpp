@@ -66,5 +66,16 @@ void run_process_runner_tests() {
     const TerminalUi plain_ui;
     expect(plain_ui.success_badge("READY") == "[ READY ]" && plain_ui.keycap("R") == "[ R ]",
            "keeps terminal badges legible without color");
+    const auto safe_terminal =
+        sanitize_terminal_text("safe\x1b[2J\x1b]0;fake-title\x07\n\r\t\x7f\xE2\x80\xAE\xC2\x80\xC3\x28text");
+    expect(safe_terminal.find("\x1b") == std::string::npos &&
+               safe_terminal.find("\\x1B[2J") != std::string::npos &&
+               safe_terminal.find("\\x1B]0;fake-title\\x07") != std::string::npos &&
+               safe_terminal.find("\\x0A") != std::string::npos &&
+               safe_terminal.find("\\x0D") != std::string::npos &&
+               safe_terminal.find("\\u202E") != std::string::npos &&
+               safe_terminal.find("\\u0080") != std::string::npos &&
+               safe_terminal.find("\\xC3(") != std::string::npos,
+           "renders terminal controls and bidi formatting from collected text visibly and safely");
 }
 } // namespace ffc::test

@@ -110,7 +110,9 @@ SocketState SocketInspector::inspect() const {
         return state;
     }
     state.available = true;
-    state.process_metadata_query_succeeded = true;
+    // `ss -p` was requested, but unprivileged output can still omit process
+    // names for sockets owned by other users.
+    state.process_metadata_requested = true;
     state.listeners = parse_listening_sockets(result.stdout_text);
     return state;
 }

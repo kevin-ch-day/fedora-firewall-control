@@ -11,6 +11,7 @@ enum class CommandAction {
     Interactive,
     Help,
     Status,
+    SnapshotJson,
     Readiness,
     Listeners,
     ThreatAssessment,

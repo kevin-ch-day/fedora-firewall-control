@@ -55,14 +55,28 @@ void terminate_process_group(const pid_t child) {
         (void)kill(child, SIGKILL);
 }
 
+void write_child_diagnostic(const char* buffer, std::size_t remaining) {
+    while (remaining > 0U) {
+        const auto written = write(STDERR_FILENO, buffer, remaining);
+        if (written > 0) {
+            buffer += written;
+            remaining -= static_cast<std::size_t>(written);
+            continue;
+        }
+        if (written < 0 && errno == EINTR)
+            continue;
+        return;
+    }
+}
+
 void write_child_error(const std::string &command, const char *context, const int error_number) {
     const char *detail = std::strerror(error_number);
-    (void)write(STDERR_FILENO, context, std::strlen(context));
-    (void)write(STDERR_FILENO, " '", 2U);
-    (void)write(STDERR_FILENO, command.data(), command.size());
-    (void)write(STDERR_FILENO, "': ", 3U);
-    (void)write(STDERR_FILENO, detail, std::strlen(detail));
-    (void)write(STDERR_FILENO, "\n", 1U);
+    write_child_diagnostic(context, std::strlen(context));
+    write_child_diagnostic(" '", 2U);
+    write_child_diagnostic(command.data(), command.size());
+    write_child_diagnostic("': ", 3U);
+    write_child_diagnostic(detail, std::strlen(detail));
+    write_child_diagnostic("\n", 1U);
 }
 
 struct CommunicationResult {

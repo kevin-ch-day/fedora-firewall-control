@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ffc/dashboard_state.hpp"
 #include "ffc/firewall_state.hpp"
 #include "ffc/terminal_ui.hpp"
 
@@ -14,7 +15,8 @@ class PostureRenderer {
 public:
     explicit PostureRenderer(TerminalUi& ui) : ui_(ui) {}
     void show_status(const FirewallState& state) const;
-    void show_dashboard_snapshot(const FirewallState& state) const;
+    void show_dashboard_home(const DashboardState& state) const;
+    void show_dashboard_snapshot(const DashboardState& state) const;
     void show_overview(const FirewallState& state) const;
     void show_listeners(const FirewallState& state) const;
     void show_threat_assessment(const FirewallState& state) const;

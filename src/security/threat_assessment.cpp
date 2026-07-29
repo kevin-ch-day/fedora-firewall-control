@@ -30,7 +30,7 @@ bool runtime_differs_from_permanent(const FirewallState &state) {
 std::vector<std::string> broad_active_port_ranges(const FirewallState &state) {
     std::vector<std::string> ranges;
     for (const auto &[zone_name, zone] : state.runtime_zones) {
-        if (!is_zone_active(state, zone_name))
+        if (!is_zone_applicable(state, zone_name))
             continue;
         for (const auto &port_spec : zone.ports) {
             const auto intel = identify_port_spec(port_spec);
@@ -46,13 +46,13 @@ std::vector<std::string> broad_active_port_ranges(const FirewallState &state) {
 bool active_zone_forwarding_enabled(const FirewallState &state) {
     return std::any_of(state.runtime_zones.begin(), state.runtime_zones.end(),
                        [&state](const auto &zone) {
-                           return is_zone_active(state, zone.first) && zone.second.forward;
+                           return is_zone_applicable(state, zone.first) && zone.second.forward;
                        });
 }
 
 bool active_zone_forwarding_has_path(const FirewallState &state) {
     for (const auto &[zone_name, zone] : state.runtime_zones) {
-        if (!is_zone_active(state, zone_name) || !zone.forward)
+        if (!is_zone_applicable(state, zone_name) || !zone.forward)
             continue;
         if (active_zone_member_count(state, zone_name) > 1U)
             return true;
@@ -69,10 +69,10 @@ std::string joined(const std::vector<std::string> &items) {
 
 std::vector<std::string> active_protocol_or_source_port_rules(const FirewallState &state) {
     std::vector<std::string> rules;
-    if (!active_zone_details_available(state))
+    if (!applicable_zone_details_available(state))
         return rules;
     for (const auto &[zone_name, zone] : state.runtime_zones) {
-        if (!is_zone_active(state, zone_name))
+        if (!is_zone_applicable(state, zone_name))
             continue;
         if (!zone.protocols.empty())
             rules.push_back(zone_name + " protocol=" + joined(zone.protocols));
@@ -80,6 +80,16 @@ std::vector<std::string> active_protocol_or_source_port_rules(const FirewallStat
             rules.push_back(zone_name + " source-port=" + joined(zone.source_ports));
     }
     return rules;
+}
+
+std::size_t applicable_rich_rule_count(const FirewallState &state) {
+    if (!applicable_zone_details_available(state))
+        return 0;
+    std::size_t count = 0;
+    for (const auto &[zone_name, zone] : state.runtime_zones)
+        if (is_zone_applicable(state, zone_name))
+            count += zone.rich_rules.size();
+    return count;
 }
 } // namespace
 
@@ -166,7 +176,16 @@ ThreatAssessment assess_threat_evidence(const FirewallState &state) {
              "Restore firewall query access and verify the state directly."});
     }
 
-    if (!state.security_signals.kernel_journal_available) {
+    if (state.security_signals.kernel_journal_status == JournalQueryStatus::Partial) {
+        assessment.findings.push_back(
+            {ThreatFindingKind::CoverageGap, "Kernel denial telemetry truncated",
+             "At least " + std::to_string(state.security_signals.kernel_drop_or_reject_events) +
+                 " retained event(s) reached the bounded journal query limit.",
+             "Additional events may be absent from this view, so an apparent count or source mix is "
+             "not complete.",
+             "Collect a narrower time window or export retained journal evidence before drawing "
+             "conclusions."});
+    } else if (!state.security_signals.kernel_journal_available) {
         assessment.findings.push_back(
             {ThreatFindingKind::CoverageGap, "Kernel denial telemetry unavailable",
              "The journal query did not return a usable retained view.",
@@ -223,8 +242,8 @@ ThreatAssessment assess_threat_evidence(const FirewallState &state) {
         const auto attributed = attributed_network_listener_count(state);
         const auto exposure = summarize_listener_exposure(state.sockets);
         assessment.findings.push_back(
-            {ThreatFindingKind::Exposure, "Network-reachable local listeners",
-             std::to_string(listeners) + " logical protocol/port service(s) across " +
+            {ThreatFindingKind::Exposure, "TCP/UDP non-multicast local listeners",
+             std::to_string(listeners) + " logical TCP/UDP protocol/port service(s) across " +
                  std::to_string(exposure.network_reachable_bindings) +
                  " non-multicast binding(s); " + std::to_string(attributed) +
                  " binding(s) have a locally reported process name.",
@@ -244,8 +263,8 @@ ThreatAssessment assess_threat_evidence(const FirewallState &state) {
                  "process telemetry."});
     } else {
         assessment.findings.push_back(
-            {ThreatFindingKind::NoAlert, "No network-reachable listeners observed",
-             "The current socket snapshot found no listener beyond loopback.",
+            {ThreatFindingKind::NoAlert, "No TCP/UDP non-multicast listeners observed",
+             "The current socket snapshot found no TCP/UDP listener beyond loopback or multicast.",
              "This is a point-in-time observation, not proof that no service can appear later or "
              "that outbound abuse is absent.",
              "Refresh after network changes and combine with process and egress monitoring when "
@@ -304,6 +323,16 @@ ThreatAssessment assess_threat_evidence(const FirewallState &state) {
              "Review the matching zone target, services, ports, rich rules, and intended traffic "
              "direction."});
     }
+    if (const auto rich_rules = applicable_rich_rule_count(state); rich_rules > 0) {
+        assessment.findings.push_back(
+            {ThreatFindingKind::Exposure, "Applicable-zone rich rules",
+             std::to_string(rich_rules) +
+                 " rich rule(s) are configured in zones applicable to current or fallback traffic.",
+             "A rich rule can restrict, log, forward, reject, drop, or permit traffic; a count alone "
+             "does not establish which effect applies to a specific flow.",
+             "Review each rule's action, family, source, destination, service, port, protocol, and "
+             "priority before relying on a clean exposure conclusion."});
+    }
     if (active_zone_forwarding_enabled(state)) {
         if (active_zone_forwarding_has_path(state)) {
             assessment.findings.push_back(
@@ -316,12 +345,13 @@ ThreatAssessment assess_threat_evidence(const FirewallState &state) {
                  "intended to communicate through this host."});
         } else {
             assessment.findings.push_back(
-                {ThreatFindingKind::NoAlert, "Intra-zone forwarding has no current path",
-                 "The option is configured, but each active zone currently has only one interface "
-                 "or source member.",
-                 "With no same-zone member pair, the option does not presently create an "
-                 "intra-zone forwarding path.",
-                 "Reassess after adding another interface or source to the active zone."});
+                {ThreatFindingKind::ScopeLimit, "Intra-zone forwarding topology not established",
+                 "Forwarding is configured, but the collected bindings did not establish a "
+                 "multi-member interface/source pair.",
+                 "Selector count is not verified route topology; a source selector can represent "
+                 "multiple hosts and routing may change outside this snapshot.",
+                 "Verify routes, interface membership, and intended same-zone traffic before "
+                 "treating forwarding as inactive."});
         }
     }
 
@@ -337,7 +367,14 @@ ThreatAssessment assess_threat_evidence(const FirewallState &state) {
              "before classifying it."});
     }
 
-    if (state.security_signals.firewalld_journal_available &&
+    if (state.security_signals.firewalld_journal_status == JournalQueryStatus::Partial) {
+        assessment.findings.push_back(
+            {ThreatFindingKind::CoverageGap, "firewalld journal telemetry truncated",
+             "At least " + std::to_string(state.security_signals.firewalld_service_events) +
+                 " service event(s) reached the bounded journal query limit.",
+             "The returned event count is a lower bound and is not a complete activity history.",
+             "Inspect a narrower time window when investigating a candidate finding."});
+    } else if (state.security_signals.firewalld_journal_available &&
         state.security_signals.firewalld_service_events > 0) {
         assessment.findings.push_back(
             {ThreatFindingKind::NoAlert, "Routine firewalld journal activity retained",

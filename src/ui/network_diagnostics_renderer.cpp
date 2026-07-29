@@ -10,7 +10,7 @@ void render_network_diagnostics(TerminalUi& ui, const NetworkDiagnostics& diagno
     for (const auto& probe : diagnostics.probes) {
         const std::string result = !probe.command_available ? ui.danger("PING UNAVAILABLE") : probe.reachable ? ui.success("REACHABLE") : ui.warning("NO REPLY");
         std::cout << "  " << result << "  " << ui.accent(probe.destination) << '\n';
-        if (!probe.output.empty()) std::cout << "    " << probe.output;
+        if (!probe.output.empty()) std::cout << "    " << sanitize_terminal_text(probe.output);
         if (!probe.output.empty() && probe.output.back() != '\n') std::cout << '\n';
     }
 
@@ -22,12 +22,12 @@ void render_network_diagnostics(TerminalUi& ui, const NetworkDiagnostics& diagno
         } else if (trace.output.empty()) {
             std::cout << "  " << ui.warning("Traceroute produced no output.") << '\n';
         } else {
-            std::cout << trace.output;
+            std::cout << sanitize_terminal_text(trace.output);
             if (trace.output.back() != '\n') std::cout << '\n';
             if (!trace.hops.empty()) {
                 ui.section("Route scope interpretation");
                 for (const auto& hop : trace.hops) {
-                    std::cout << "  " << ui.accent("hop " + std::to_string(hop.number)) << "  " << hop.address
+                std::cout << "  " << ui.accent("hop " + std::to_string(hop.number)) << "  " << sanitize_terminal_text(hop.address)
                               << ui.muted(" — " + network_address_scope_label(hop.scope)) << '\n';
                 }
             }
@@ -44,7 +44,7 @@ void render_network_diagnostics(TerminalUi& ui, const NetworkDiagnostics& diagno
         } else if (report.output.empty()) {
             std::cout << "  " << ui.warning("MTR produced no output.") << '\n';
         } else {
-            std::cout << report.output;
+            std::cout << sanitize_terminal_text(report.output);
             if (report.output.back() != '\n') std::cout << '\n';
             const auto destination = std::find_if(report.hops.begin(), report.hops.end(), [&report](const PathStabilityHop& hop) { return hop.address == report.destination; });
             const bool intermediate_loss = std::any_of(report.hops.begin(), report.hops.end(), [&report](const PathStabilityHop& hop) { return hop.address != report.destination && hop.response_loss_percent && *hop.response_loss_percent > 0.0; });
@@ -66,7 +66,7 @@ void render_network_diagnostics(TerminalUi& ui, const NetworkDiagnostics& diagno
             const std::string state = !probe.command_available ? ui.danger("DIG UNAVAILABLE") : probe.answered ? ui.success("ANSWERED") : ui.warning("NO USABLE ANSWER");
             std::cout << "  " << state << "  " << ui.accent(probe.resolver) << '\n';
             if (!probe.output.empty()) {
-                std::cout << "    " << probe.output;
+                std::cout << "    " << sanitize_terminal_text(probe.output);
                 if (probe.output.back() != '\n') std::cout << '\n';
             }
         }

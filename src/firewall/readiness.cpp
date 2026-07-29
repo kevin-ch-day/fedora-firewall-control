@@ -19,7 +19,7 @@ bool runtime_matches_permanent(const FirewallState &state) {
 }
 
 bool active_zone_policy_details_available(const FirewallState &state) {
-    return active_zone_details_available(state);
+    return applicable_zone_details_available(state);
 }
 
 ReadinessCheck unavailable_check(const std::string &label, const std::string &detail) {
@@ -96,14 +96,15 @@ std::vector<ReadinessCheck> assess_readiness(const FirewallState &state) {
     bool forward_ports = false;
     if (active_details_available) {
         for (const auto &[zone, config] : state.runtime_zones) {
-            if (!is_zone_active(state, zone))
+            if (!is_zone_applicable(state, zone))
                 continue;
             forwarding = forwarding || config.forward;
             forwarding_path =
                 forwarding_path || (config.forward && active_zone_member_count(state, zone) > 1U);
             masquerade = masquerade || config.masquerade;
             exposure = exposure || !config.services.empty() || !config.ports.empty() ||
-                       !config.protocols.empty() || !config.source_ports.empty();
+                       !config.protocols.empty() || !config.source_ports.empty() ||
+                       !config.rich_rules.empty();
             permissive_target = permissive_target || config.target == "ACCEPT";
             forward_ports = forward_ports || !config.forward_ports.empty();
         }
@@ -145,7 +146,7 @@ std::vector<ReadinessCheck> assess_readiness(const FirewallState &state) {
     bool unclassified_connected_device = false;
     if (state.network_manager.available && observation_available(state.active_zones_status)) {
         for (const auto &device : state.network_manager.devices) {
-            if (device.type == "loopback" || device.state.rfind("connected", 0) != 0)
+            if (!is_connected_transport_device(device))
                 continue;
             bool classified = false;
             for (const auto &[zone, interfaces] : state.active_zone_interfaces) {
@@ -174,37 +175,67 @@ std::vector<ReadinessCheck> assess_readiness(const FirewallState &state) {
                   state.active_zone_sources.empty() ? "none" : "review source-based trust"});
 
     const auto listener_exposure = summarize_listener_exposure(state.sockets);
-    checks.push_back({"network-reachable listening services",
+    checks.push_back({"TCP/UDP non-multicast listener exposure",
                       !state.sockets.available                          ? CheckLevel::Warn
                       : listener_exposure.logical_network_services == 0 ? CheckLevel::Pass
                       : hostile_mode                                    ? CheckLevel::Fail
                                                                         : CheckLevel::Warn,
                       !state.sockets.available ? "socket scan unavailable"
                       : listener_exposure.logical_network_services == 0
-                          ? "none"
+                          ? "none observed; SCTP, DCCP, raw, and protocol sockets are not collected"
                           : std::to_string(listener_exposure.logical_network_services) +
                                 " logical service(s) across " +
                                 std::to_string(listener_exposure.network_reachable_bindings) +
                                 " non-multicast binding(s)"});
+    checks.push_back({"multicast listener exposure",
+                      !state.sockets.available                              ? CheckLevel::Warn
+                      : listener_exposure.multicast_only_bindings == 0       ? CheckLevel::Info
+                      : hostile_mode                                         ? CheckLevel::Warn
+                                                                             : CheckLevel::Info,
+                      !state.sockets.available ? "socket scan unavailable"
+                      : listener_exposure.multicast_only_bindings == 0
+                          ? "none observed in the TCP/UDP listener query"
+                          : std::to_string(listener_exposure.multicast_only_bindings) +
+                                " binding(s); local-segment discovery traffic remains possible"});
     checks.push_back({"kernel drop/reject log signals",
                       !state.security_signals.kernel_journal_available           ? CheckLevel::Warn
                       : state.security_signals.kernel_drop_or_reject_events == 0 ? CheckLevel::Pass
                                                                                  : CheckLevel::Warn,
-                      !state.security_signals.kernel_journal_available ? "journal unavailable"
+                      !state.security_signals.kernel_journal_available
+                          ? state.security_signals.kernel_journal_status == JournalQueryStatus::Partial
+                                ? "at least " +
+                                      std::to_string(state.security_signals.kernel_drop_or_reject_events) +
+                                      " event(s); bounded journal view may be truncated"
+                                : "journal unavailable"
                       : state.security_signals.kernel_drop_or_reject_events == 0
                           ? "none in the last 24h"
                           : std::to_string(state.security_signals.kernel_drop_or_reject_events) +
                                 " event(s); review, do not attribute"});
 
     const std::string unavailable_policy_detail =
-        "active-zone or runtime policy collection unavailable or incomplete";
+        "applicable-zone or runtime policy collection unavailable or incomplete";
     checks.push_back(
         !active_details_available
             ? unavailable_check("inbound services, ports, and protocols", unavailable_policy_detail)
             : ReadinessCheck{"inbound services, ports, and protocols",
                              exposure ? (hostile_mode ? CheckLevel::Fail : CheckLevel::Warn)
                                       : CheckLevel::Pass,
-                             exposure ? "review configured exposure" : "none"});
+                             exposure ? "review configured exposure or rich rules" : "none"});
+    const auto applicable_rich_rules = [&state]() {
+        std::size_t count = 0;
+        for (const auto &[zone, config] : state.runtime_zones)
+            if (is_zone_applicable(state, zone))
+                count += config.rich_rules.size();
+        return count;
+    }();
+    checks.push_back(!active_details_available
+                         ? unavailable_check("active rich rules", unavailable_policy_detail)
+                         : applicable_rich_rules == 0
+                               ? ReadinessCheck{"active rich rules", CheckLevel::Pass, "none"}
+                               : ReadinessCheck{"active rich rules",
+                                                hostile_mode ? CheckLevel::Fail : CheckLevel::Warn,
+                                                std::to_string(applicable_rich_rules) +
+                                                    " rule(s); semantics are not fully parsed"});
     checks.push_back(!active_details_available
                          ? unavailable_check("active zone target", unavailable_policy_detail)
                          : ReadinessCheck{"active zone target",
@@ -246,8 +277,8 @@ std::vector<ReadinessCheck> assess_readiness(const FirewallState &state) {
                                  " active policy name(s); policy details are not yet assessed"});
     checks.push_back(
         active_details_available
-            ? ReadinessCheck{"zone policy coverage", CheckLevel::Warn,
-                             "ICMP blocks, helpers, and zone priorities are not yet assessed"}
+            ? ReadinessCheck{"zone policy coverage", CheckLevel::Info,
+                             "rich-rule semantics, ICMP blocks, helpers, priorities, and direct rules are not yet assessed"}
             : unavailable_check("zone policy coverage", unavailable_policy_detail));
     checks.push_back(
         !observation_available(state.runtime_zones_status) ||

@@ -1,4 +1,5 @@
 #include "ffc/firewalld_backend.hpp"
+#include "ffc/text_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -21,6 +22,18 @@ ObservationStatus parse_service_enablement(const CommandResult &result, bool &en
         return ObservationStatus::Partial;
     enabled = values.front() == "enabled" || values.front() == "enabled-runtime";
     return ObservationStatus::Available;
+}
+
+bool known_log_denied_value(const std::string_view value) {
+    constexpr std::array<std::string_view, 5> values{"off", "all", "unicast", "broadcast",
+                                                       "multicast"};
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+bool has_recognized_zone_details(const std::map<std::string, ZoneState>& zones) {
+    return std::any_of(zones.begin(), zones.end(), [](const auto& entry) {
+        return entry.second.details_valid && !entry.second.target.empty();
+    });
 }
 } // namespace
 
@@ -76,7 +89,7 @@ FirewallState FirewalldCommandBackend::inspect(const PostureCollectionDepth dept
     const auto log_denied = firewalld_cmd({"--get-log-denied"});
     if (log_denied.success()) {
         const auto values = split_words(log_denied.stdout_text);
-        if (!values.empty()) {
+        if (values.size() == 1U && known_log_denied_value(values.front())) {
             state.log_denied = values.front();
             state.denied_logging_status = ObservationStatus::Available;
         } else {
@@ -89,7 +102,7 @@ FirewallState FirewalldCommandBackend::inspect(const PostureCollectionDepth dept
     const auto default_zone = firewalld_cmd({"--get-default-zone"});
     if (default_zone.success()) {
         const auto values = split_words(default_zone.stdout_text);
-        if (!values.empty()) {
+        if (values.size() == 1U) {
             state.default_zone = values.front();
             state.default_zone_status = ObservationStatus::Available;
         } else {
@@ -103,29 +116,54 @@ FirewallState FirewalldCommandBackend::inspect(const PostureCollectionDepth dept
     if (active_zones.success()) {
         state.active_zone_interfaces = parse_active_zones(active_zones.stdout_text);
         state.active_zone_sources = parse_active_zone_sources(active_zones.stdout_text);
-        state.active_zones_status = ObservationStatus::Available;
+        state.active_zones_status = trim_copy(active_zones.stdout_text).empty() ||
+                                            !state.active_zone_interfaces.empty() ||
+                                            !state.active_zone_sources.empty()
+                                        ? ObservationStatus::Available
+                                        : ObservationStatus::Partial;
+        if (!observation_available(state.active_zones_status))
+            state.errors.push_back("active-zone query returned unrecognized output");
     } else
         state.errors.push_back("could not list active zones: " + active_zones.stderr_text);
     const auto runtime_zones = firewalld_cmd({"--list-all-zones"});
     if (runtime_zones.success()) {
         state.runtime_zones = parse_all_zone_info(runtime_zones.stdout_text);
-        state.runtime_zones_status = ObservationStatus::Available;
+        state.runtime_zones_status = has_recognized_zone_details(state.runtime_zones)
+                                         ? ObservationStatus::Available
+                                         : ObservationStatus::Partial;
+        if (!observation_available(state.runtime_zones_status))
+            state.errors.push_back("runtime-zone query returned no recognized zones");
     } else
         state.errors.push_back("could not inspect runtime zones: " + runtime_zones.stderr_text);
     if (depth == PostureCollectionDepth::Complete) {
         const auto permanent_zones = firewalld_cmd({"--permanent", "--list-all-zones"});
         if (permanent_zones.success()) {
             state.permanent_zones = parse_all_zone_info(permanent_zones.stdout_text);
-            state.permanent_zones_status = ObservationStatus::Available;
+            state.permanent_zones_status = has_recognized_zone_details(state.permanent_zones)
+                                               ? ObservationStatus::Available
+                                               : ObservationStatus::Partial;
+            if (!observation_available(state.permanent_zones_status))
+                state.errors.push_back("permanent-zone query returned no recognized zones");
         } else
             state.errors.push_back("could not inspect permanent zones: " +
                                    permanent_zones.stderr_text);
         const auto policies = firewalld_cmd({"--get-active-policies"});
         if (policies.success()) {
             state.active_policies = parse_active_policy_names(policies.stdout_text);
-            state.active_policies_status = ObservationStatus::Available;
+            state.active_policies_status = trim_copy(policies.stdout_text).empty() ||
+                                                !state.active_policies.empty()
+                                            ? ObservationStatus::Available
+                                            : ObservationStatus::Partial;
+            if (!observation_available(state.active_policies_status))
+                state.errors.push_back("active-policy query returned unrecognized output");
         } else
             state.errors.push_back("could not list active policies: " + policies.stderr_text);
+    }
+    if (observation_available(state.default_zone_status) &&
+        observation_available(state.runtime_zones_status) &&
+        !state.runtime_zones.contains(state.default_zone)) {
+        state.default_zone_status = ObservationStatus::Partial;
+        state.errors.push_back("default zone is absent from runtime-zone output");
     }
     return state;
 }

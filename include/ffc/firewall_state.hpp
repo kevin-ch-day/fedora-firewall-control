@@ -32,10 +32,13 @@ struct ZoneState {
     std::vector<std::string> forward_ports;
     bool masquerade{false};
     bool forward{false};
+    bool details_valid{true};
 };
 
 struct FirewallState {
     OperatingMode operating_mode{OperatingMode::Normal};
+    OperatingModeLoadStatus operating_mode_status{OperatingModeLoadStatus::Defaulted};
+    std::string operating_mode_diagnostic;
     bool installed{false};
     bool active{false};
     bool enabled{false};
@@ -79,7 +82,12 @@ bool zone_configurations_equal(const ZoneState &left, const ZoneState &right);
 // drift is evaluated separately from interface membership.
 bool zone_policies_equal(const ZoneState &left, const ZoneState &right);
 [[nodiscard]] bool is_zone_active(const FirewallState &state, std::string_view zone);
+// Physical transports can receive the firewalld default zone. Tunnel and
+// loopback devices are assessed by their dedicated paths instead.
+[[nodiscard]] bool is_connected_transport_device(const NetworkDeviceState& device);
+[[nodiscard]] bool is_zone_applicable(const FirewallState &state, std::string_view zone);
+[[nodiscard]] std::vector<std::string> applicable_zone_names(const FirewallState &state);
 [[nodiscard]] std::size_t active_zone_member_count(const FirewallState &state,
                                                    std::string_view zone);
-[[nodiscard]] bool active_zone_details_available(const FirewallState &state);
+[[nodiscard]] bool applicable_zone_details_available(const FirewallState &state);
 } // namespace ffc

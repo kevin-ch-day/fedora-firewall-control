@@ -1,8 +1,15 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace ffc {
+// Converts terminal control bytes, malformed UTF-8, and bidi/format controls
+// to visible escapes before rendering externally collected text.
+[[nodiscard]] std::string sanitize_terminal_text(std::string_view text,
+                                                 std::size_t maximum_bytes = 4096U);
+
 class TerminalUi {
 public:
     TerminalUi();
@@ -25,6 +32,7 @@ public:
 private:
     enum class Theme { Industrial, Defcon, HighContrast };
     bool color_{false};
+    bool clear_screen_{false};
     int width_{72};
     Theme theme_{Theme::Industrial};
     [[nodiscard]] std::string paint(const std::string& code, const std::string& text) const;

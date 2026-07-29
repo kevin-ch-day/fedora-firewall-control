@@ -1,6 +1,7 @@
 #include "ffc/command_executor.hpp"
 
 #include "ffc/readiness.hpp"
+#include "ffc/dashboard_json.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -10,9 +11,10 @@
 namespace ffc {
 namespace {
 void print_usage() {
-    std::cout << "Usage: ffc [--status | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --log-analysis | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
+    std::cout << "Usage: ffc [--status | --snapshot-json | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --log-analysis | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
               << "Without an option, opens the interactive read-only dashboard.\n"
               << "  --status     Print firewall posture and exposure summary.\n"
+              << "  --snapshot-json  Print a versioned read-only dashboard snapshot as JSON.\n"
               << "  --readiness  Print readiness checks (exit: 0 pass, 1 warning, 2 fail).\n"
               << "  --listeners  Print non-loopback local listening sockets.\n"
               << "  --threat-assessment  Review local evidence, exposure, and telemetry gaps; no attack verdicts.\n"
@@ -61,7 +63,14 @@ int CommandExecutor::execute(const CommandLine& command) const {
         std::cout << "Geo ipify API key saved to " << result << " with owner-only permissions.\n"; return 0;
     }
     if (command.action == CommandAction::Mode) {
-        if (!command.mode_to_set.has_value()) { std::cout << "Assessment mode: " << to_string(operating_mode_.load()) << '\n'; return 0; }
+        if (!command.mode_to_set.has_value()) {
+            const auto mode = operating_mode_.load();
+            std::cout << "Assessment mode: " << to_string(mode.mode);
+            if (mode.status == OperatingModeLoadStatus::Invalid)
+                std::cout << " (safe fallback; " << mode.diagnostic << ")";
+            std::cout << '\n';
+            return mode.status == OperatingModeLoadStatus::Invalid ? 2 : 0;
+        }
         std::string result; if (!operating_mode_.save(*command.mode_to_set, result)) { std::cerr << "Could not save mode: " << result << '\n'; return 2; }
         std::cout << "Assessment mode set to " << to_string(*command.mode_to_set) << ". Firewall settings were not changed.\n"; return 0;
     }
@@ -92,6 +101,10 @@ int CommandExecutor::execute(const CommandLine& command) const {
     }
 
     const auto state = posture_.inspect();
+    if (command.action == CommandAction::SnapshotJson) {
+        std::cout << serialize_dashboard_snapshot_json(make_dashboard_snapshot(state));
+        return 0;
+    }
     if (command.action == CommandAction::Status) { dashboard_.show_status(state); dashboard_.show_overview(state); return state.installed ? 0 : 2; }
     if (command.action == CommandAction::Readiness) { dashboard_.show_readiness(state); return readiness_exit_code(state); }
     if (command.action == CommandAction::ThreatAssessment) { dashboard_.show_threat_assessment(state); return 0; }

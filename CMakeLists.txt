@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(fedora-firewall-control
-  VERSION 0.1.1
+  VERSION 0.1.2
   DESCRIPTION "Read-only Fedora firewalld posture console"
   LANGUAGES CXX
 )
@@ -14,6 +14,7 @@ option(FFC_WARNINGS_AS_ERRORS "Treat project compiler warnings as errors" ON)
 option(FFC_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(FFC_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
 option(FFC_EXPORT_COMPILE_COMMANDS "Write compile_commands.json for editors and analysis tools" ON)
+option(FFC_ENABLE_RELEASE_HARDENING "Enable tested compiler and linker hardening for release builds" ON)
 
 if(FFC_EXPORT_COMPILE_COMMANDS)
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -36,11 +37,22 @@ endif()
 
 add_library(ffc_project_warnings INTERFACE)
 target_compile_options(ffc_project_warnings INTERFACE
-  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic>
+  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-Wformat=2;-Wformat-security>
 )
 if(FFC_WARNINGS_AS_ERRORS)
   target_compile_options(ffc_project_warnings INTERFACE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Werror>
+  )
+endif()
+
+add_library(ffc_project_hardening INTERFACE)
+if(FFC_ENABLE_RELEASE_HARDENING AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(ffc_project_hardening INTERFACE
+    $<$<CONFIG:Release,RelWithDebInfo>:-fstack-protector-strong;-D_FORTIFY_SOURCE=3;-fPIE>
+  )
+  target_link_options(ffc_project_hardening INTERFACE
+    $<$<CONFIG:Release,RelWithDebInfo>:-pie;-Wl,-z,relro,-z,now,-z,noexecstack>
   )
 endif()
 
@@ -95,6 +107,8 @@ set(FFC_CORE_SOURCES
   src/security/socket_inspector.cpp
   src/security/threat_assessment.cpp
   src/ui/dashboard.cpp
+  src/ui/dashboard_json.cpp
+  src/ui/dashboard_state.cpp
   src/ui/log_renderer.cpp
   src/ui/network_diagnostics_renderer.cpp
   src/ui/network_renderer.cpp
@@ -106,10 +120,13 @@ set(FFC_CORE_SOURCES
 add_library(ffc_core ${FFC_CORE_SOURCES})
 target_compile_features(ffc_core PUBLIC cxx_std_20)
 target_include_directories(ffc_core PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-target_link_libraries(ffc_core PRIVATE ffc_project_warnings PUBLIC ffc_project_instrumentation)
+target_compile_definitions(ffc_core PRIVATE FFC_APPLICATION_VERSION="${PROJECT_VERSION}")
+target_link_libraries(ffc_core PRIVATE ffc_project_warnings ffc_project_hardening
+                      PUBLIC ffc_project_instrumentation)
 
 add_executable(fedora-firewall-control src/main.cpp)
-target_link_libraries(fedora-firewall-control PRIVATE ffc_core ffc_project_warnings)
+target_link_libraries(fedora-firewall-control PRIVATE ffc_core ffc_project_warnings
+                      ffc_project_hardening)
 
 add_custom_command(TARGET fedora-firewall-control POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE_DIR:fedora-firewall-control>/ffc"
@@ -120,6 +137,16 @@ add_custom_command(TARGET fedora-firewall-control POST_BUILD
 )
 
 install(TARGETS fedora-firewall-control RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(CODE "
+  execute_process(
+    COMMAND \"\${CMAKE_COMMAND}\" -E create_symlink \"fedora-firewall-control\"
+            \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ffc\"
+    RESULT_VARIABLE ffc_alias_result
+  )
+  if(NOT ffc_alias_result EQUAL 0)
+    message(FATAL_ERROR \"Could not install ffc alias\")
+  endif()
+")
 
 if(BUILD_TESTING)
   set(FFC_TEST_SOURCES
@@ -140,6 +167,17 @@ if(BUILD_TESTING)
   add_executable(ffc_tests ${FFC_TEST_SOURCES})
   target_link_libraries(ffc_tests PRIVATE ffc_core ffc_project_warnings)
   add_test(NAME ffc_tests COMMAND ffc_tests)
+  configure_file(tests/verify_install_alias.cmake.in
+                 ${CMAKE_CURRENT_BINARY_DIR}/verify_install_alias.cmake @ONLY)
+  add_test(NAME ffc_install_alias
+           COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/verify_install_alias.cmake)
+  find_program(FFC_JQ_PROGRAM jq)
+  if(FFC_JQ_PROGRAM)
+    configure_file(tests/verify_dashboard_json.cmake.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/verify_dashboard_json.cmake @ONLY)
+    add_test(NAME ffc_dashboard_json_contract
+             COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/verify_dashboard_json.cmake)
+  endif()
 endif()
 
 message(STATUS "fedora-firewall-control ${PROJECT_VERSION}: ${CMAKE_BUILD_TYPE} build")

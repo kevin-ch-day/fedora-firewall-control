@@ -24,6 +24,12 @@ void run_logging_analysis_tests() {
     expect(logger.record({LogChannel::Audit, LogLevel::Info, "test-event", "key=at_test-key\n"}, &error) && logger.record({LogChannel::Security, LogLevel::Warning, "test-security-event", {}}, &error) && logger.record({LogChannel::Error, LogLevel::Error, "test-error-event", {}}, &error) && logger.record({LogChannel::Error, LogLevel::Error, "test-error-event", {}}, &error), "writes separated structured log events");
     const auto audit = secure_local_path(LocalStorageArea::State, "audit.log", false, error);
     expect(read_private_file(audit, content, error) && content.find("at_test-key") == std::string::npos && content.find("[REDACTED_IPIFY_KEY]") != std::string::npos, "stores only sanitized log values");
+    expect(write_private_file(audit, std::string(512U * 1024U + 1U, 'x'), false, error) &&
+               logger.record({LogChannel::Audit, LogLevel::Info, "post-rotation", {}}, &error) &&
+               read_private_file(audit, content, error) &&
+               content.find("log-rotation") != std::string::npos &&
+               content.find("post-rotation") != std::string::npos,
+           "atomically rotates oversized audit logs before appending the new event");
     const auto analysis = LocalLogAnalyzer().inspect(); bool repeated = false;
     for (const auto& event : analysis.recurring_failures) repeated = repeated || (event.channel == LogChannel::Error && event.event == "test-error-event" && event.count == 2U);
     expect(analysis.logs_available && analysis.entries >= 4U && analysis.errors == 2U && repeated, "analyzes retained logs and identifies repeated local failures");
