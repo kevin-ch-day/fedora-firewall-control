@@ -16,7 +16,32 @@ ctest --test-dir build --output-on-failure
 
 On Fedora, install the minimal build/runtime dependencies with `./scripts/setup-firewall-dev.sh`, then build and test from any directory with `./scripts/build.sh`.
 
+### CMake workflows
+
+The traditional `cmake -S . -B build -G Ninja -DBUILD_TESTING=ON` workflow remains supported. `CMakePresets.json` also provides repeatable build trees. The sanitizer preset uses Clang so it has a self-contained sanitizer runtime on Fedora:
+
+```bash
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+
+cmake --preset sanitize
+cmake --build --preset sanitize
+ctest --preset sanitize
+
+cmake --preset release
+cmake --build --preset release
+```
+
+Development builds use `ccache` automatically when it is installed. Set `-DFFC_USE_CCACHE=OFF` to disable it. Additional CMake switches include `FFC_WARNINGS_AS_ERRORS`, `FFC_ENABLE_SANITIZERS`, `FFC_ENABLE_COVERAGE`, and `FFC_EXPORT_COMPILE_COMMANDS`.
+
 For a non-interactive report, run `./build/ffc --status`. For automation or CI checks, `./build/ffc --readiness` returns `0` for a clean assessment, `1` when review warnings exist, and `2` on a failed readiness check. Read operations normally work unprivileged, though local PolicyKit policy can affect what firewalld exposes.
+
+## Local application logs
+
+`ffc` writes small, owner-only, structured local logs under `$XDG_STATE_HOME/fedora-firewall-control/` (or `~/.local/state/fedora-firewall-control/`). `operations.log` records lifecycle and dashboard refreshes, `audit.log` records requested actions, `security.log` records security-review actions, and `error.log` records failed actions and unavailable interactive dependencies. Entries use UTC timestamps and are capped at 512 KiB per file; logs are rotated in place when full. Control characters and ipify-style API keys are redacted before persistence. The logs intentionally exclude API-key values, raw command output, packet payloads, and firewall changes.
+
+Run `./build/ffc --log-analysis` or select **Security and local evidence → 4** in the dashboard to summarize retained activity, error counts, and repeated error event types. This is a local, explainable trend summary of `ffc`'s own records—not an intrusion-detection verdict or attacker-attribution system.
 
 For an explicit connectivity check, `./build/ffc --network-diagnostics` sends two ICMP echo requests each to `1.1.1.1` and `8.8.8.8`, then runs a numeric traceroute to `1.1.1.1` with a maximum of eight hops and one query per hop. `--extended` compares the routes to four public resolvers. `--advanced` includes those routes, a five-sample MTR report to `1.1.1.1`, and one direct DNS lookup for `example.com` to each of Cloudflare, Google, and Quad9. These checks never run on a normal dashboard refresh. A missing reply or an intermediate router's MTR loss can be normal filtering or rate limiting; it is not evidence of an attack.
 

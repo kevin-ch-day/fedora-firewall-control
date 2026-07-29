@@ -18,6 +18,7 @@ CommandLine parse_command_line(const std::vector<std::string>& arguments) {
         if (argument == "--security-advisories") return make_command(CommandAction::SecurityAdvisories);
         if (argument == "--network-metadata") return make_command(CommandAction::NetworkMetadata);
         if (argument == "--network-history") return make_command(CommandAction::NetworkHistory);
+        if (argument == "--log-analysis") return make_command(CommandAction::LogAnalysis);
         if (argument == "--configure-ipify-key") return make_command(CommandAction::ConfigureIpifyKey);
         if (argument == "--mode") return make_command(CommandAction::Mode);
         return make_command(CommandAction::Invalid);
@@ -31,5 +32,25 @@ CommandLine parse_command_line(const std::vector<std::string>& arguments) {
         auto result = make_command(CommandAction::Mode); result.mode_to_set = mode; return result;
     }
     return make_command(CommandAction::Invalid);
+}
+
+std::string command_action_name(CommandAction action) {
+    switch (action) {
+        case CommandAction::Interactive: return "interactive";
+        case CommandAction::Help: return "help";
+        case CommandAction::Status: return "status";
+        case CommandAction::Readiness: return "readiness";
+        case CommandAction::Listeners: return "listeners";
+        case CommandAction::ThreatAssessment: return "threat-assessment";
+        case CommandAction::NetworkDiagnostics: return "network-diagnostics";
+        case CommandAction::SecurityAdvisories: return "security-advisories";
+        case CommandAction::NetworkMetadata: return "network-metadata";
+        case CommandAction::NetworkHistory: return "network-history";
+        case CommandAction::LogAnalysis: return "log-analysis";
+        case CommandAction::ConfigureIpifyKey: return "configure-ipify-key";
+        case CommandAction::Mode: return "mode";
+        case CommandAction::Invalid: return "invalid";
+    }
+    return "invalid";
 }
 } // namespace ffc

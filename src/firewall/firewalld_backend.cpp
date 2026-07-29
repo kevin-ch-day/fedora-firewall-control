@@ -29,18 +29,15 @@ FirewallState FirewalldCommandBackend::inspect() const {
     if (default_zone.success()) { const auto values = split_words(default_zone.stdout_text); if (!values.empty()) state.default_zone = values.front(); }
     else state.errors.push_back("could not determine default zone: " + default_zone.stderr_text);
 
-    const auto zones = firewalld_cmd({"--get-zones"});
-    if (!zones.success()) { state.errors.push_back("could not list zones: " + zones.stderr_text); return state; }
     const auto active_zones = firewalld_cmd({"--get-active-zones"});
     if (active_zones.success()) { state.active_zone_interfaces = parse_active_zones(active_zones.stdout_text); state.active_zone_sources = parse_active_zone_sources(active_zones.stdout_text); }
     else state.errors.push_back("could not list active zones: " + active_zones.stderr_text);
-    for (const auto& zone : split_words(zones.stdout_text)) {
-        const auto runtime = firewalld_cmd({"--zone=" + zone, "--list-all"});
-        if (runtime.success()) state.runtime_zones.emplace(zone, parse_zone_info(runtime.stdout_text));
-        else state.errors.push_back("could not inspect runtime zone " + zone + ": " + runtime.stderr_text);
-        const auto permanent = firewalld_cmd({"--permanent", "--zone=" + zone, "--list-all"});
-        if (permanent.success()) state.permanent_zones.emplace(zone, parse_zone_info(permanent.stdout_text));
-    }
+    const auto runtime_zones = firewalld_cmd({"--list-all-zones"});
+    if (runtime_zones.success()) state.runtime_zones = parse_all_zone_info(runtime_zones.stdout_text);
+    else state.errors.push_back("could not inspect runtime zones: " + runtime_zones.stderr_text);
+    const auto permanent_zones = firewalld_cmd({"--permanent", "--list-all-zones"});
+    if (permanent_zones.success()) state.permanent_zones = parse_all_zone_info(permanent_zones.stdout_text);
+    else state.errors.push_back("could not inspect permanent zones: " + permanent_zones.stderr_text);
     const auto policies = firewalld_cmd({"--get-active-policies"});
     if (policies.success()) state.active_policies = parse_active_policy_names(policies.stdout_text);
     else state.errors.push_back("could not list active policies: " + policies.stderr_text);

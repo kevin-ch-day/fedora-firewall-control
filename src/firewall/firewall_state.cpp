@@ -38,6 +38,26 @@ ZoneState parse_zone_info(const std::string& text) {
     return zone;
 }
 
+std::map<std::string, ZoneState> parse_all_zone_info(const std::string& text) {
+    std::map<std::string, ZoneState> zones;
+    std::istringstream lines(text); std::string line, current_name, current_zone;
+    const auto save_zone = [&]() {
+        if (!current_name.empty()) zones.emplace(current_name, parse_zone_info(current_zone));
+    };
+    while (std::getline(lines, line)) {
+        if (!line.empty() && line.front() != ' ' && line.front() != '\t') {
+            save_zone();
+            const auto names = split_words(line);
+            current_name = names.empty() ? std::string{} : names.front();
+            current_zone.clear();
+        } else if (!current_name.empty()) {
+            current_zone += line + '\n';
+        }
+    }
+    save_zone();
+    return zones;
+}
+
 std::map<std::string, std::vector<std::string>> parse_active_zones(const std::string& text) {
     std::map<std::string, std::vector<std::string>> zones;
     std::istringstream lines(text); std::string line; std::string current_zone;

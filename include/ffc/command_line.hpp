@@ -18,6 +18,7 @@ enum class CommandAction {
     SecurityAdvisories,
     NetworkMetadata,
     NetworkHistory,
+    LogAnalysis,
     ConfigureIpifyKey,
     Mode,
     Invalid,
@@ -34,4 +35,5 @@ struct CommandLine {
 // Parses only supported fixed commands. Argument interpretation stays outside
 // Application so UI execution never needs to reason about raw argv values.
 [[nodiscard]] CommandLine parse_command_line(const std::vector<std::string>& arguments);
+[[nodiscard]] std::string command_action_name(CommandAction action);
 } // namespace ffc

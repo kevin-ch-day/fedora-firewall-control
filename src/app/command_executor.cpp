@@ -10,7 +10,7 @@
 namespace ffc {
 namespace {
 void print_usage() {
-    std::cout << "Usage: ffc [--status | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
+    std::cout << "Usage: ffc [--status | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --log-analysis | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
               << "Without an option, opens the interactive read-only dashboard.\n"
               << "  --status     Print firewall posture and exposure summary.\n"
               << "  --readiness  Print readiness checks (exit: 0 pass, 1 warning, 2 fail).\n"
@@ -20,9 +20,12 @@ void print_usage() {
               << "  --security-advisories  Query available DNF5 security advisories and CVE references.\n"
               << "  --network-metadata [--enrich]  Query public-IP and save route metadata; enrichment uses one ipify credit.\n"
               << "  --network-history   Print locally saved public-IP and route metadata.\n"
+              << "  --log-analysis      Summarize retained local ffc log activity and repeated errors.\n"
               << "  --configure-ipify-key  Prompt for and securely save a Geo ipify API key.\n"
               << "  --mode [normal|hostile]  Show or set assessment-only operating mode.\n"
               << "  --help       Show this help.\n";
+    std::cout << "\nOwner-only application logs are stored under $XDG_STATE_HOME/fedora-firewall-control/\n"
+              << "(or ~/.local/state/fedora-firewall-control/): operations.log, audit.log, security.log, and error.log.\n";
 }
 bool prompt_for_ipify_key(std::string& key, std::string& error) {
     if (!isatty(STDIN_FILENO)) { error = "standard input is not a terminal; run this command interactively"; return false; }
@@ -45,8 +48,8 @@ int readiness_exit_code(const FirewallState& state) {
 }
 } // namespace
 
-CommandExecutor::CommandExecutor(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard)
-    : posture_(posture), network_evidence_(network_evidence), network_diagnostics_(network_diagnostics), security_advisories_(security_advisories), ipify_credentials_(ipify_credentials), operating_mode_(operating_mode), dashboard_(dashboard) {}
+CommandExecutor::CommandExecutor(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const SecurityAdvisoryInspector& security_advisories, const LocalLogAnalyzer& log_analyzer, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard)
+    : posture_(posture), network_evidence_(network_evidence), network_diagnostics_(network_diagnostics), security_advisories_(security_advisories), log_analyzer_(log_analyzer), ipify_credentials_(ipify_credentials), operating_mode_(operating_mode), dashboard_(dashboard) {}
 
 int CommandExecutor::execute(const CommandLine& command) const {
     if (command.action == CommandAction::Invalid) { print_usage(); return 2; }
@@ -69,6 +72,7 @@ int CommandExecutor::execute(const CommandLine& command) const {
         return available && advanced_available ? 0 : 2;
     }
     if (command.action == CommandAction::SecurityAdvisories) { const auto report = security_advisories_.inspect(); dashboard_.show_security_advisories(report); return report.query_succeeded ? 0 : 2; }
+    if (command.action == CommandAction::LogAnalysis) { const auto analysis = log_analyzer_.inspect(); dashboard_.show_log_analysis(analysis); return analysis.logs_available ? 0 : 2; }
 
     const auto state = posture_.inspect();
     if (command.action == CommandAction::Status) { dashboard_.show_status(state); dashboard_.show_overview(state); return state.installed ? 0 : 2; }

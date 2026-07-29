@@ -6,14 +6,14 @@ namespace ffc::port_catalog {
 namespace {
 struct ServiceEntry {
     std::string_view protocol;
-    unsigned short port;
+    unsigned short port{0};
     std::string_view label;
 };
 
 struct ServiceRangeEntry {
     std::string_view protocol;
-    unsigned short first_port;
-    unsigned short last_port;
+    unsigned short first_port{0};
+    unsigned short last_port{0};
     std::string_view label;
 };
 

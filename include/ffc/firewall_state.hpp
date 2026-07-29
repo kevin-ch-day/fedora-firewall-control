@@ -49,6 +49,7 @@ struct FirewallState {
 
 std::vector<std::string> split_words(const std::string& text);
 ZoneState parse_zone_info(const std::string& text);
+std::map<std::string, ZoneState> parse_all_zone_info(const std::string& text);
 std::map<std::string, std::vector<std::string>> parse_active_zones(const std::string& text);
 std::map<std::string, std::vector<std::string>> parse_active_zone_sources(const std::string& text);
 std::vector<std::string> parse_active_policy_names(const std::string& text);
