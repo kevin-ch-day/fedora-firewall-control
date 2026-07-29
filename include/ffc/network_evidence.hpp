@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ffc/network_metadata.hpp"
+#include "ffc/network_history.hpp"
 
 namespace ffc {
 struct NetworkCapture {

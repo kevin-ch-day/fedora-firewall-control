@@ -2,6 +2,7 @@
 
 #include "ffc/posture_renderer.hpp"
 #include "ffc/network_renderer.hpp"
+#include "ffc/security_advisory_renderer.hpp"
 #include "ffc/log_renderer.hpp"
 #include "ffc/terminal_ui.hpp"
 
@@ -12,7 +13,7 @@ enum class DashboardMenu { Main, Firewall, Network, Security };
 // Operations display façade for menu/chrome plus focused renderer modules.
 class OperationsDashboard {
 public:
-    explicit OperationsDashboard(TerminalUi& ui) : ui_(ui), posture_(ui), network_(ui), logs_(ui) {}
+    explicit OperationsDashboard(TerminalUi& ui) : ui_(ui), posture_(ui), network_(ui), advisories_(ui), logs_(ui) {}
     void show_status(const FirewallState& state) const;
     void show_overview(const FirewallState& state) const;
     void show_listeners(const FirewallState& state) const;
@@ -35,6 +36,7 @@ private:
     TerminalUi& ui_;
     PostureRenderer posture_;
     NetworkRenderer network_;
+    SecurityAdvisoryRenderer advisories_;
     LogRenderer logs_;
 };
 using Dashboard = OperationsDashboard; // Compatibility name for early integrations.

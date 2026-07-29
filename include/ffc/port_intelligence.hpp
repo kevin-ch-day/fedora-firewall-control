@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace ffc {
 enum class PortRange { WellKnown, Registered, DynamicPrivate, Unknown };
@@ -18,9 +19,9 @@ struct PortIntel {
 
 // Conventional port knowledge for exposure review. A label identifies a
 // typical assignment, never verifies the actual service or process.
-[[nodiscard]] PortIntel identify_port(unsigned short port, const std::string& protocol);
-[[nodiscard]] PortIntel identify_port_spec(const std::string& port_spec);
-[[nodiscard]] PortIntel identify_endpoint(const std::string& endpoint, const std::string& protocol);
+[[nodiscard]] PortIntel identify_port(unsigned short port, std::string_view protocol);
+[[nodiscard]] PortIntel identify_port_spec(std::string_view port_spec);
+[[nodiscard]] PortIntel identify_endpoint(std::string_view endpoint, std::string_view protocol);
 [[nodiscard]] std::string port_range_label(PortRange range);
 [[nodiscard]] std::string port_knowledge_source_label(PortKnowledgeSource source);
 [[nodiscard]] std::string port_intel_label(const PortIntel& intel);

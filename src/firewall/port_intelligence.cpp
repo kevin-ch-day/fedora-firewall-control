@@ -1,10 +1,9 @@
 #include "ffc/port_intelligence.hpp"
+#include "ffc/text_utils.hpp"
 #include "port_catalog.hpp"
 
 #include <arpa/inet.h>
-#include <algorithm>
 #include <charconv>
-#include <cctype>
 #include <map>
 #include <netdb.h>
 
@@ -165,18 +164,17 @@ const std::map<std::string, std::string> service_names{
     {"sctp/3868", "Diameter"},
 };
 
-std::string normalized_protocol(std::string protocol) {
-    std::transform(protocol.begin(), protocol.end(), protocol.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-    return protocol;
+std::string normalized_protocol(const std::string_view protocol) {
+    return lowercase_copy(protocol);
 }
 
-std::optional<unsigned short> parse_port(const std::string& value) {
+std::optional<unsigned short> parse_port(const std::string_view value) {
     unsigned int parsed{}; const auto [position, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
     return error == std::errc{} && position == value.data() + value.size() && parsed <= 65535U ? std::optional<unsigned short>(static_cast<unsigned short>(parsed)) : std::nullopt;
 }
 }
 
-PortIntel identify_port(unsigned short port, const std::string& protocol) {
+PortIntel identify_port(const unsigned short port, const std::string_view protocol) {
     const auto normalized = normalized_protocol(protocol);
     PortIntel intel{port, std::nullopt, normalized, port <= 1023 ? PortRange::WellKnown : port <= 49151 ? PortRange::Registered : PortRange::DynamicPrivate, {}, PortKnowledgeSource::RangeOnly};
     const auto service = service_names.find(normalized + "/" + std::to_string(port));
@@ -206,7 +204,7 @@ PortIntel identify_port(unsigned short port, const std::string& protocol) {
     }
     return intel;
 }
-PortIntel identify_port_spec(const std::string& port_spec) {
+PortIntel identify_port_spec(const std::string_view port_spec) {
     const auto separator = port_spec.find('/');
     if (separator == std::string::npos) return {};
     const auto port_part = port_spec.substr(0, separator);
@@ -225,7 +223,7 @@ PortIntel identify_port_spec(const std::string& port_spec) {
     intel.source = PortKnowledgeSource::RangeOnly;
     return intel;
 }
-PortIntel identify_endpoint(const std::string& endpoint, const std::string& protocol) {
+PortIntel identify_endpoint(const std::string_view endpoint, const std::string_view protocol) {
     const auto separator = endpoint.rfind(':');
     if (separator == std::string::npos) return {};
     const auto port = parse_port(endpoint.substr(separator + 1));

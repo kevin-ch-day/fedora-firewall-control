@@ -7,6 +7,7 @@
 #include "ffc/log_analysis.hpp"
 #include "ffc/network_diagnostics.hpp"
 #include "ffc/network_evidence.hpp"
+#include "ffc/network_history.hpp"
 #include "ffc/network_manager.hpp"
 #include "ffc/network_metadata.hpp"
 #include "ffc/operating_mode.hpp"

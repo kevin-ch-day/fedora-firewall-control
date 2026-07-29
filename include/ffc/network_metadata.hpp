@@ -4,7 +4,6 @@
 #include "ffc/credentials.hpp"
 
 #include <string>
-#include <vector>
 
 namespace ffc {
 struct NetworkMetadata {
@@ -39,12 +38,4 @@ private:
     const IpifyCredentialStore& credentials_;
 };
 
-class NetworkHistoryStore {
-public:
-    [[nodiscard]] bool append(const NetworkMetadata& metadata, bool vpn_active, std::string& result) const;
-    [[nodiscard]] bool read_recent(std::vector<std::string>& records, std::string& result) const;
-
-private:
-    [[nodiscard]] std::string path(std::string& error, bool create_directory) const;
-};
 } // namespace ffc

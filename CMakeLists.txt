@@ -82,6 +82,7 @@ set(FFC_CORE_SOURCES
   src/network/network_address.cpp
   src/network/network_diagnostics.cpp
   src/network/network_evidence.cpp
+  src/network/network_history.cpp
   src/network/network_manager.cpp
   src/network/network_metadata.cpp
   src/network/network_path_parser.cpp
@@ -98,6 +99,7 @@ set(FFC_CORE_SOURCES
   src/ui/network_diagnostics_renderer.cpp
   src/ui/network_renderer.cpp
   src/ui/posture_renderer.cpp
+  src/ui/security_advisory_renderer.cpp
   src/ui/terminal_ui.cpp
 )
 

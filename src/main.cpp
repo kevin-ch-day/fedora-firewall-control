@@ -8,6 +8,7 @@
 #include "ffc/security_signals.hpp"
 #include "ffc/evidence_quality.hpp"
 #include "ffc/network_metadata.hpp"
+#include "ffc/network_history.hpp"
 #include "ffc/network_diagnostics.hpp"
 #include "ffc/network_evidence.hpp"
 #include "ffc/credentials.hpp"
