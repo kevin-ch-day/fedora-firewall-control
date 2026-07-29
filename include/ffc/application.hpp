@@ -1,7 +1,11 @@
 #pragma once
 
-#include "ffc/firewall_backend.hpp"
 #include "ffc/dashboard.hpp"
+#include "ffc/network_evidence.hpp"
+#include "ffc/network_diagnostics.hpp"
+#include "ffc/credentials.hpp"
+#include "ffc/operating_mode.hpp"
+#include "ffc/posture_inspector.hpp"
 
 #include <string>
 
@@ -10,11 +14,15 @@ namespace ffc {
 // workflows belong in separate transaction classes in later releases.
 class Application {
 public:
-    Application(FirewallBackend& backend, Dashboard& dashboard);
+    Application(const PostureInspector& posture, const NetworkEvidenceService& network_evidence, const NetworkDiagnosticsInspector& network_diagnostics, const IpifyCredentialStore& ipify_credentials, OperatingModeStore& operating_mode, Dashboard& dashboard);
     int run(int argc, char** argv);
 
 private:
-    FirewallBackend& backend_;
+    const PostureInspector& posture_;
+    const NetworkEvidenceService& network_evidence_;
+    const NetworkDiagnosticsInspector& network_diagnostics_;
+    const IpifyCredentialStore& ipify_credentials_;
+    OperatingModeStore& operating_mode_;
     Dashboard& dashboard_;
     FirewallState state_;
 
@@ -22,6 +30,5 @@ private:
     int run_interactive();
     int readiness_exit_code() const;
     static void print_usage();
-    static std::string items_or_none(const std::vector<std::string>& items);
 };
 } // namespace ffc

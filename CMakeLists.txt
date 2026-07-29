@@ -8,11 +8,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(ffc_core
     src/application.cpp
     src/command_runner.cpp
+    src/credentials.cpp
     src/dashboard.cpp
     src/firewall_state.cpp
     src/firewalld_backend.cpp
+    src/network_manager.cpp
+    src/network_diagnostics.cpp
+    src/network_evidence.cpp
+    src/network_metadata.cpp
+    src/operating_mode.cpp
+    src/posture_inspector.cpp
     src/readiness.cpp
+    src/socket_inspector.cpp
+    src/security_signals.cpp
     src/terminal_ui.cpp
+    src/vpn.cpp
 )
 target_include_directories(ffc_core PUBLIC include)
 target_compile_options(ffc_core PRIVATE -Wall -Wextra -Wpedantic -Werror)

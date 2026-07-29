@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 readonly SCRIPT_NAME="${0##*/}"
-readonly PACKAGES=(gcc-c++ cmake ninja-build firewalld)
+readonly PACKAGES=(gcc-c++ cmake ninja-build firewalld iputils traceroute)
 PACKAGE_MANAGER=""
 
 info() { printf '[INFO] %s\n' "$*"; }
@@ -22,6 +22,8 @@ read-only firewalld controller:
   cmake       Build configuration and CTest
   ninja-build Build executor
   firewalld   The Fedora firewall service and firewall-cmd client
+  iputils     Bounded ICMP reachability probes (ping)
+  traceroute  Bounded numeric route diagnostics
 
 Options:
   --install   Install missing dependencies (default).

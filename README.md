@@ -18,6 +18,10 @@ On Fedora, install the minimal build/runtime dependencies with `./scripts/setup-
 
 For a non-interactive report, run `./build/ffc --status`. For automation or CI checks, `./build/ffc --readiness` returns `0` for a clean assessment, `1` when review warnings exist, and `2` on a failed readiness check. Read operations normally work unprivileged, though local PolicyKit policy can affect what firewalld exposes.
 
+For an explicit connectivity check, `./build/ffc --network-diagnostics` sends two ICMP echo requests each to `1.1.1.1` and `8.8.8.8`, then runs a numeric traceroute to `1.1.1.1` with a maximum of eight hops and one query per hop. It never runs on a normal dashboard refresh. A lack of replies can be normal on restrictive networks and is not evidence of an attack.
+
 ## Safety model
 
 The current release intentionally has no mutation path. Planned versions must follow `DISCOVER → SNAPSHOT → PLAN → CONFIRM → APPLY → VERIFY → COMMIT`, rolling back whenever verification fails. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/FIREWALL_POLICY.md](docs/FIREWALL_POLICY.md), and [docs/RECOVERY.md](docs/RECOVERY.md).
+
+For multi-day defensive use, follow [docs/DEFCON_OPERATIONS.md](docs/DEFCON_OPERATIONS.md). It covers repeatable posture checks, runtime/permanent caveats, and panic-mode recovery.

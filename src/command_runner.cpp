@@ -9,19 +9,28 @@
 
 namespace ffc {
 CommandResult ProcessCommandRunner::run(const std::vector<std::string>& arguments) const {
+    return run_with_input(arguments, {});
+}
+
+CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string>& arguments, const std::string& standard_input) const {
     if (arguments.empty()) return {-1, {}, "empty command"};
-    int out_pipe[2]{}, err_pipe[2]{};
-    if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0) return {-1, {}, std::strerror(errno)};
+    int out_pipe[2]{}, err_pipe[2]{}, input_pipe[2]{};
+    if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0 || pipe(input_pipe) != 0) return {-1, {}, std::strerror(errno)};
     const pid_t pid = fork();
     if (pid < 0) return {-1, {}, std::strerror(errno)};
     if (pid == 0) {
-        dup2(out_pipe[1], STDOUT_FILENO); dup2(err_pipe[1], STDERR_FILENO);
-        close(out_pipe[0]); close(out_pipe[1]); close(err_pipe[0]); close(err_pipe[1]);
+        dup2(input_pipe[0], STDIN_FILENO); dup2(out_pipe[1], STDOUT_FILENO); dup2(err_pipe[1], STDERR_FILENO);
+        close(input_pipe[0]); close(input_pipe[1]); close(out_pipe[0]); close(out_pipe[1]); close(err_pipe[0]); close(err_pipe[1]);
         std::vector<char*> argv; argv.reserve(arguments.size() + 1);
         for (const auto& argument : arguments) argv.push_back(const_cast<char*>(argument.c_str()));
         argv.push_back(nullptr); execvp(argv[0], argv.data()); _exit(127);
     }
-    close(out_pipe[1]); close(err_pipe[1]);
+    close(input_pipe[0]);
+    if (!standard_input.empty()) {
+        const char* remaining = standard_input.data(); size_t bytes_remaining = standard_input.size();
+        while (bytes_remaining > 0) { const ssize_t written = write(input_pipe[1], remaining, bytes_remaining); if (written <= 0) break; remaining += written; bytes_remaining -= static_cast<size_t>(written); }
+    }
+    close(input_pipe[1]); close(out_pipe[1]); close(err_pipe[1]);
     std::string out, err;
     std::array<pollfd, 2> fds{{{out_pipe[0], POLLIN, 0}, {err_pipe[0], POLLIN, 0}}};
     int open_fds = 2;

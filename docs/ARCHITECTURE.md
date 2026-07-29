@@ -1,6 +1,24 @@
 # Architecture
 
-The application is a C++ terminal client layered as `Application → FirewallBackend → firewalld command adapter → fixed-argument process runner`. `Application` owns the inspection lifecycle, command dispatch, refresh behavior, and terminal presentation while receiving its backend as a dependency. This keeps `main.cpp` as simple object composition and makes mock-backed application testing possible.
+The application is a C++ terminal client with explicit read-only layers:
+
+```text
+Application
+├── PostureInspector             composes a single firewall-posture snapshot
+│   ├── FirewalldCommandBackend  firewalld state and permanent/runtime comparison
+│   ├── NetworkManagerInspector  device state only; no profile names or Wi-Fi SSIDs
+│   ├── VpnInspector             local provider/tunnel awareness; never connects or disconnects
+│   ├── SocketInspector          local listening-socket awareness; no process metadata
+│   └── SecuritySignalsInspector bounded local journal summaries; no attribution
+├── NetworkEvidenceService       explicit metadata capture and local-history persistence
+│   └── NetworkMetadataInspector public-IP lookup and local route metadata
+├── NetworkDiagnosticsInspector  explicit bounded ping and traceroute checks
+├── IpifyCredentialStore         local owner-only credential or environment override
+├── readiness                   pure posture evaluation
+└── Dashboard → TerminalUi       presentation only
+```
+
+`Application` owns command dispatch and terminal flow. `PostureInspector` owns snapshot composition and cross-inspector availability notices, while `NetworkEvidenceService` owns the explicit collect-and-persist workflow. This removes duplicate metadata persistence logic from the CLI and interactive paths, keeps `main.cpp` as object composition, and makes each responsibility independently testable.
 
 The runner uses `execvp`; it never invokes a shell. Standard output and standard error are captured separately.
 
