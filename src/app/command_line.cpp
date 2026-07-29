@@ -23,6 +23,8 @@ CommandLine parse_command_line(const std::vector<std::string>& arguments) {
         return make_command(CommandAction::Invalid);
     }
     if (arguments.size() == 2 && arguments[0] == "--network-metadata" && arguments[1] == "--enrich") { auto result = make_command(CommandAction::NetworkMetadata); result.enrich_metadata = true; return result; }
+    if (arguments.size() == 2 && arguments[0] == "--network-diagnostics" && arguments[1] == "--extended") { auto result = make_command(CommandAction::NetworkDiagnostics); result.extended_diagnostics = true; return result; }
+    if (arguments.size() == 2 && arguments[0] == "--network-diagnostics" && arguments[1] == "--advanced") { auto result = make_command(CommandAction::NetworkDiagnostics); result.extended_diagnostics = true; result.advanced_diagnostics = true; return result; }
     if (arguments.size() == 2 && arguments[0] == "--mode") {
         OperatingMode mode;
         if (!parse_operating_mode(arguments[1], mode)) return make_command(CommandAction::Invalid);

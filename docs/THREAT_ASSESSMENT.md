@@ -28,6 +28,12 @@ The tool labels these as **candidate alert**, **exposure**, **coverage gap**, **
 
 `ffc` does not detect outbound or lateral port scanning from a one-time listener view. MITRE's Network Service Discovery guidance describes detection that correlates process execution, socket connections, and sequential destination probing in a time window—telemetry this read-only console intentionally does not collect. [MITRE ATT&CK T1046](https://attack.mitre.org/techniques/T1046/)
 
+The optional diagnostics view classifies traceroute hops as private/local, carrier-grade NAT/provider, link-local, multicast, or public. These scopes explain address ownership ranges; they do not identify a venue, ISP customer, or threat actor.
+
+Use `ffc --network-diagnostics --extended` only when you intend to generate additional packets: it performs the regular probes plus one bounded traceroute each to Cloudflare, Google, Quad9, and Cisco/OpenDNS public resolvers. A destination or hop that does not respond is an incomplete route, not evidence of filtering or malicious activity.
+
+`ffc --network-diagnostics --advanced` additionally runs a five-sample MTR report to Cloudflare and one direct `example.com` DNS query to each of Cloudflare, Google, and Quad9. The console distinguishes destination response loss from missing replies at intermediate routers: when the destination reports zero loss, intermediate MTR loss is commonly ICMP rate limiting or de-prioritization, not evidence of a degraded path. Direct DNS checks disclose the query and source address to the selected resolver, so the fixed low-sensitivity name is used rather than a user browsing name. [RFC 9076](https://www.rfc-editor.org/rfc/rfc9076.html) describes DNS privacy considerations.
+
 ## Safe analyst workflow
 
 1. Preserve the time window and run `ffc --status`, `ffc --listeners`, and `ffc --threat-assessment`.

@@ -3,6 +3,7 @@
 #include "ffc/command_line.hpp"
 #include "ffc/port_intelligence.hpp"
 #include "ffc/network_manager.hpp"
+#include "ffc/network_diagnostics.hpp"
 #include "ffc/network_metadata.hpp"
 #include "ffc/socket_inspector.hpp"
 #include "ffc/security_signals.hpp"
@@ -52,6 +53,10 @@ int main() {
     expect(denial_summary.event_count == 3 && denial_summary.unique_sources == 2 && denial_summary.unique_destination_ports == 2, "summarizes denial telemetry without retaining values");
     const auto metadata = ffc::parse_default_route("default via 192.0.2.1 dev wlp0s20f3 proto dhcp metric 600\n");
     expect(metadata.default_gateway == "192.0.2.1" && metadata.default_interface == "wlp0s20f3", "parses default route");
+    const auto hops = ffc::parse_traceroute_hops("traceroute to 1.1.1.1 (1.1.1.1), 8 hops max\n 1  192.168.0.1  0.5 ms\n 2  100.93.189.130  14.2 ms\n 3  *\n 4  1.1.1.1  22.0 ms\n");
+    expect(hops.size() == 3 && hops.front().scope == ffc::NetworkAddressScope::Private && hops.at(1).scope == ffc::NetworkAddressScope::CarrierGradeNat && hops.back().scope == ffc::NetworkAddressScope::Public, "classifies private and carrier-grade NAT traceroute hops");
+    const auto mtr_hops = ffc::parse_mtr_hops(" 1.|-- 192.168.0.1  0.0%     5  0.5  0.6  0.4  0.8  0.1\n 2.|-- 100.93.189.131  0.0%     5 12.0 12.6 11.9 13.2  0.5\n 3.|-- ??? 100.0     5  0.0  0.0  0.0  0.0  0.0\n11.|-- 1.1.1.1  0.0%     5 22.0 23.1 21.9 24.0  0.9\n");
+    expect(mtr_hops.size() == 4 && mtr_hops.at(1).scope == ffc::NetworkAddressScope::CarrierGradeNat && mtr_hops.at(2).response_loss_percent == 100.0 && mtr_hops.back().scope == ffc::NetworkAddressScope::Public, "parses MTR response-loss data without treating intermediate loss as endpoint loss");
     expect(ffc::is_valid_ip_address("203.0.113.5") && ffc::is_valid_ip_address("2001:db8::1") && !ffc::is_valid_ip_address("not-an-ip"), "validates public IP values");
     const auto ssh_port = ffc::identify_port_spec("22/tcp");
     const auto rdp_port = ffc::identify_port_spec("3389/TCP");
@@ -89,6 +94,10 @@ int main() {
     expect(ffc::parse_command_line({}).action == ffc::CommandAction::Interactive, "parses interactive command");
     const auto enrich_command = ffc::parse_command_line({"--network-metadata", "--enrich"});
     expect(enrich_command.action == ffc::CommandAction::NetworkMetadata && enrich_command.enrich_metadata, "parses metadata enrichment command");
+    const auto extended_diagnostics = ffc::parse_command_line({"--network-diagnostics", "--extended"});
+    expect(extended_diagnostics.action == ffc::CommandAction::NetworkDiagnostics && extended_diagnostics.extended_diagnostics, "parses extended diagnostics command");
+    const auto advanced_diagnostics = ffc::parse_command_line({"--network-diagnostics", "--advanced"});
+    expect(advanced_diagnostics.action == ffc::CommandAction::NetworkDiagnostics && advanced_diagnostics.extended_diagnostics && advanced_diagnostics.advanced_diagnostics, "parses advanced diagnostics command");
     const auto hostile_mode = ffc::parse_command_line({"--mode", "hostile"});
     expect(hostile_mode.action == ffc::CommandAction::Mode && hostile_mode.mode_to_set == ffc::OperatingMode::HostileNetwork, "parses hostile mode command");
     expect(ffc::parse_command_line({"--network-metadata", "--unexpected"}).action == ffc::CommandAction::Invalid, "rejects invalid command combinations");

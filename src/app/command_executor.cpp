@@ -10,13 +10,13 @@
 namespace ffc {
 namespace {
 void print_usage() {
-    std::cout << "Usage: ffc [--status | --readiness | --listeners | --threat-assessment | --network-diagnostics | --security-advisories | --network-metadata [--enrich] | --network-history | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
+    std::cout << "Usage: ffc [--status | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
               << "Without an option, opens the interactive read-only dashboard.\n"
               << "  --status     Print firewall posture and exposure summary.\n"
               << "  --readiness  Print readiness checks (exit: 0 pass, 1 warning, 2 fail).\n"
               << "  --listeners  Print non-loopback local listening sockets.\n"
               << "  --threat-assessment  Review local evidence, exposure, and telemetry gaps; no attack verdicts.\n"
-              << "  --network-diagnostics  Run bounded ping and traceroute tests (external traffic).\n"
+              << "  --network-diagnostics [--extended|--advanced]  Run bounded external tests; extended compares four routes, advanced also adds MTR and direct DNS checks.\n"
               << "  --security-advisories  Query available DNF5 security advisories and CVE references.\n"
               << "  --network-metadata [--enrich]  Query public-IP and save route metadata; enrichment uses one ipify credit.\n"
               << "  --network-history   Print locally saved public-IP and route metadata.\n"
@@ -63,9 +63,10 @@ int CommandExecutor::execute(const CommandLine& command) const {
         std::cout << "Assessment mode set to " << to_string(*command.mode_to_set) << ". Firewall settings were not changed.\n"; return 0;
     }
     if (command.action == CommandAction::NetworkDiagnostics) {
-        const auto diagnostics = network_diagnostics_.inspect(); dashboard_.show_network_diagnostics(diagnostics);
-        const bool available = diagnostics.traceroute_command_available && std::all_of(diagnostics.probes.begin(), diagnostics.probes.end(), [](const ReachabilityProbe& probe) { return probe.command_available; });
-        return available ? 0 : 2;
+        const auto diagnostics = network_diagnostics_.inspect(command.extended_diagnostics, command.advanced_diagnostics); dashboard_.show_network_diagnostics(diagnostics);
+        const bool available = std::all_of(diagnostics.traceroutes.begin(), diagnostics.traceroutes.end(), [](const TracerouteResult& trace) { return trace.command_available; }) && std::all_of(diagnostics.probes.begin(), diagnostics.probes.end(), [](const ReachabilityProbe& probe) { return probe.command_available; });
+        const bool advanced_available = (!diagnostics.path_stability || diagnostics.path_stability->command_available) && std::all_of(diagnostics.resolver_probes.begin(), diagnostics.resolver_probes.end(), [](const ResolverProbe& probe) { return probe.command_available; });
+        return available && advanced_available ? 0 : 2;
     }
     if (command.action == CommandAction::SecurityAdvisories) { const auto report = security_advisories_.inspect(); dashboard_.show_security_advisories(report); return report.query_succeeded ? 0 : 2; }
 

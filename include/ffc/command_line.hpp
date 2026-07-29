@@ -26,6 +26,8 @@ enum class CommandAction {
 struct CommandLine {
     CommandAction action{CommandAction::Invalid};
     bool enrich_metadata{false};
+    bool extended_diagnostics{false};
+    bool advanced_diagnostics{false};
     std::optional<OperatingMode> mode_to_set;
 };
 

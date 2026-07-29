@@ -18,10 +18,12 @@ add_library(ffc_core
     src/firewall/posture_inspector.cpp
     src/firewall/port_intelligence.cpp
     src/firewall/readiness.cpp
+    src/network/network_address.cpp
     src/network/network_diagnostics.cpp
     src/network/network_evidence.cpp
     src/network/network_manager.cpp
     src/network/network_metadata.cpp
+    src/network/network_path_parser.cpp
     src/network/vpn.cpp
     src/security/credentials.cpp
     src/security/evidence_quality.cpp
@@ -31,6 +33,7 @@ add_library(ffc_core
     src/security/socket_inspector.cpp
     src/security/threat_assessment.cpp
     src/ui/dashboard.cpp
+    src/ui/network_diagnostics_renderer.cpp
     src/ui/network_renderer.cpp
     src/ui/posture_renderer.cpp
     src/ui/terminal_ui.cpp
