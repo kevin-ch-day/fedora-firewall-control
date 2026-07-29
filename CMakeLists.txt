@@ -178,6 +178,30 @@ if(BUILD_TESTING)
     add_test(NAME ffc_dashboard_json_contract
              COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/verify_dashboard_json.cmake)
   endif()
+
+  find_program(FFC_NODE_PROGRAM node)
+  find_program(FFC_NPM_PROGRAM npm)
+  set(FFC_WEB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/web")
+  if(FFC_NODE_PROGRAM AND FFC_NPM_PROGRAM AND
+     EXISTS "${FFC_WEB_DIR}/package.json" AND
+     EXISTS "${FFC_WEB_DIR}/package-lock.json" AND
+     EXISTS "${FFC_WEB_DIR}/node_modules/.package-lock.json")
+    execute_process(
+      COMMAND "${FFC_NODE_PROGRAM}" --version
+      OUTPUT_VARIABLE FFC_NODE_VERSION
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+    if(FFC_NODE_VERSION MATCHES "^v24\\.")
+      add_test(NAME ffc_web_check COMMAND "${FFC_NPM_PROGRAM}" run check)
+      set_tests_properties(ffc_web_check PROPERTIES WORKING_DIRECTORY "${FFC_WEB_DIR}")
+      message(STATUS "Web checks enabled with ${FFC_NODE_VERSION}")
+    else()
+      message(STATUS "Web checks skipped: Node 24 is required (found ${FFC_NODE_VERSION})")
+    endif()
+  else()
+    message(STATUS "Web checks skipped: Node/npm, manifests, or local dependencies are unavailable")
+  endif()
 endif()
 
 message(STATUS "fedora-firewall-control ${PROJECT_VERSION}: ${CMAKE_BUILD_TYPE} build")

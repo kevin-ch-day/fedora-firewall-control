@@ -322,7 +322,12 @@ validate_workspace_manifest_contract() {
         .private == true and
         (.engines.node | type == "string" and length > 0) and
         (.engines.npm | type == "string" and length > 0) and
-        ((.scripts // {}) | type == "object" and all(.[]; type == "string"))
+        ((.scripts // {}) | type == "object" and all(.[]; type == "string")) and
+        (if .dependencies.fastify == null then true else
+          (.scripts as $scripts |
+            all(["dev", "build", "start", "test", "typecheck", "check"][];
+              (. as $name | $scripts[$name] | type == "string" and length > 0)))
+        end)
     ' "$workspace/package.json" >/dev/null ||
         die "package.json violates the private Node workspace contract."
     /usr/bin/jq -e --slurpfile package "$workspace/package.json" '
@@ -563,8 +568,16 @@ verify_workspace() {
         ok "Lockfile contains no third-party dependencies; node_modules is not required"
     elif [[ -d "$workspace/node_modules" && ! -L "$workspace/node_modules" ]]; then
         ok "Local node_modules is present for $dependency_count locked package(s)"
+        require_node24_for_npm
+        if (cd -- "$workspace" && "$NPM_COMMAND_PATH" ls --depth=0 --ignore-scripts >/dev/null); then
+            ok "Direct dependency graph is complete and ready for npm run check"
+            info "Read-only verification does not run npm run check because its build phase writes web/dist/."
+        else
+            die "Installed web dependencies are incomplete or inconsistent; run the locked npm ci workflow."
+        fi
     else
         warn "Local node_modules is absent; install $dependency_count locked package(s) with npm ci."
+        return 1
     fi
     engines="$(/usr/bin/jq -r 'if .engines.node == null then "" elif (.engines.node | type) == "string" then .engines.node else error("engines.node must be a string") end' "$workspace/package.json")" ||
         die "package.json has an invalid engines.node value."
