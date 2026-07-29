@@ -21,6 +21,8 @@ std::string annotated_port_list(const std::vector<std::string> &ports) {
 struct ExposureCounts {
     std::size_t services{0};
     std::size_t ports{0};
+    std::size_t protocols{0};
+    std::size_t source_ports{0};
     std::size_t rich_rules{0};
     std::size_t forward_ports{0};
     bool forwarding{false};
@@ -30,10 +32,12 @@ struct ExposureCounts {
 ExposureCounts active_exposure_counts(const FirewallState &state) {
     ExposureCounts counts;
     for (const auto &[zone_name, zone] : state.runtime_zones) {
-        if (!state.active_zone_interfaces.contains(zone_name))
+        if (!is_zone_active(state, zone_name))
             continue;
         counts.services += zone.services.size();
         counts.ports += zone.ports.size();
+        counts.protocols += zone.protocols.size();
+        counts.source_ports += zone.source_ports.size();
         counts.rich_rules += zone.rich_rules.size();
         counts.forward_ports += zone.forward_ports.size();
         counts.forwarding = counts.forwarding || zone.forward;
@@ -47,6 +51,9 @@ std::string active_path_summary(const FirewallState &state) {
     for (const auto &[zone, interfaces] : state.active_zone_interfaces)
         for (const auto &interface : interfaces)
             result += (result.empty() ? "" : ", ") + interface + " → " + zone;
+    for (const auto &[zone, sources] : state.active_zone_sources)
+        for (const auto &source : sources)
+            result += (result.empty() ? "" : ", ") + source + " → " + zone + " (source)";
     return result.empty() ? "no active interface assignment" : result;
 }
 } // namespace
@@ -59,48 +66,68 @@ std::string PostureRenderer::items_or_none(const std::vector<std::string> &items
 }
 void PostureRenderer::show_status(const FirewallState &state) const {
     ui_.section("Firewall posture");
-    ui_.key_value("Firewalld",
-                  state.active ? ui_.success_badge("ACTIVE") : ui_.danger_badge("INACTIVE"));
-    ui_.key_value("Boot service",
-                  state.enabled ? ui_.success_badge("ENABLED") : ui_.warning_badge("NOT ENABLED"));
-    ui_.key_value("Panic mode",
-                  state.panic ? ui_.danger_badge("ACTIVE") : ui_.success_badge("OFF"));
+    ui_.key_value("Firewalld", !observation_available(state.service_state)
+                                   ? ui_.warning_badge("UNKNOWN")
+                               : state.active ? ui_.success_badge("ACTIVE")
+                                              : ui_.danger_badge("INACTIVE"));
+    ui_.key_value("Boot service", !observation_available(state.service_enablement)
+                                      ? ui_.warning_badge("UNKNOWN")
+                                  : state.enabled ? ui_.success_badge("ENABLED")
+                                                  : ui_.warning_badge("NOT ENABLED"));
+    ui_.key_value("Panic mode", !observation_available(state.panic_state)
+                                    ? ui_.warning_badge("UNKNOWN")
+                                : state.panic ? ui_.danger_badge("ACTIVE")
+                                              : ui_.success_badge("OFF"));
     ui_.key_value("Assessment mode", state.operating_mode == OperatingMode::HostileNetwork
                                          ? ui_.warning_badge("HOSTILE NETWORK")
                                          : ui_.neutral_badge("NORMAL"));
     ui_.key_value("Permanent config",
-                  state.permanent_config_checked
+                  observation_available(state.permanent_config)
                       ? (state.permanent_config_valid ? ui_.success_badge("VALID")
                                                       : ui_.danger_badge("INVALID"))
-                      : ui_.warning_badge("NOT CHECKED"));
-    ui_.key_value("Default zone", state.default_zone.empty() ? ui_.warning("unknown")
-                                                             : ui_.accent(state.default_zone));
-    ui_.key_value("Denied-packet logging", state.log_denied.empty() ? ui_.muted("unknown")
-                                           : state.log_denied == "off"
-                                               ? ui_.muted("off")
-                                               : ui_.warning(state.log_denied));
+                      : ui_.warning_badge("UNKNOWN"));
+    ui_.key_value("Default zone", !observation_available(state.default_zone_status)
+                                      ? ui_.warning("unknown")
+                                  : state.default_zone.empty() ? ui_.warning("missing")
+                                                               : ui_.accent(state.default_zone));
+    ui_.key_value("Denied-packet logging",
+                  !observation_available(state.denied_logging_status) ? ui_.warning("unknown")
+                  : state.log_denied == "off"                         ? ui_.muted("off")
+                  : state.log_denied.empty() ? ui_.warning("unknown")
+                                             : ui_.warning(state.log_denied));
     for (const auto &error : state.errors)
         ui_.key_value("Notice", ui_.warning(error));
 }
 void PostureRenderer::show_dashboard_snapshot(const FirewallState &state) const {
     const auto exposure = active_exposure_counts(state);
+    const bool policy_details_available = active_zone_details_available(state);
     ui_.section("Quick posture");
-    ui_.key_value("Firewall",
-                  state.active ? ui_.success_badge("ACTIVE") : ui_.danger_badge("INACTIVE"));
-    ui_.key_value(
-        "Policy",
-        "zone: " +
-            (state.default_zone.empty() ? ui_.warning("unknown") : ui_.accent(state.default_zone)) +
-            "  •  boot: " + (state.enabled ? ui_.success("enabled") : ui_.warning("not enabled")) +
-            "  •  config: " +
-            (state.permanent_config_valid ? ui_.success("valid") : ui_.warning("review")));
-    ui_.key_value("Mode", (state.operating_mode == OperatingMode::HostileNetwork
-                               ? ui_.warning("hostile network")
-                               : ui_.neutral_badge("NORMAL")) +
-                              "  •  denied logging: " +
-                              (state.log_denied == "off"  ? ui_.muted("off")
-                               : state.log_denied.empty() ? ui_.warning("unknown")
-                                                          : ui_.warning(state.log_denied)));
+    ui_.key_value("Firewall", !observation_available(state.service_state)
+                                  ? ui_.warning_badge("UNKNOWN")
+                              : state.active ? ui_.success_badge("ACTIVE")
+                                             : ui_.danger_badge("INACTIVE"));
+    ui_.key_value("Policy",
+                  "zone: " +
+                      (!observation_available(state.default_zone_status) ? ui_.warning("unknown")
+                       : state.default_zone.empty() ? ui_.warning("missing")
+                                                    : ui_.accent(state.default_zone)) +
+                      "  •  boot: " +
+                      (!observation_available(state.service_enablement) ? ui_.warning("unknown")
+                       : state.enabled ? ui_.success("enabled")
+                                       : ui_.warning("not enabled")) +
+                      "  •  config: " +
+                      (!observation_available(state.permanent_config) ? ui_.warning("unknown")
+                       : state.permanent_config_valid                 ? ui_.success("valid")
+                                                                      : ui_.warning("review")));
+    ui_.key_value("Mode",
+                  (state.operating_mode == OperatingMode::HostileNetwork
+                       ? ui_.warning("hostile network")
+                       : ui_.neutral_badge("NORMAL")) +
+                      "  •  denied logging: " +
+                      (!observation_available(state.denied_logging_status) ? ui_.warning("unknown")
+                       : state.log_denied == "off"                         ? ui_.muted("off")
+                       : state.log_denied.empty() ? ui_.warning("unknown")
+                                                  : ui_.warning(state.log_denied)));
     ui_.section("Network and exposure");
     const std::string vpn =
         !state.vpn.interface_scan_available ? ui_.warning("VPN scan unavailable")
@@ -110,12 +137,15 @@ void PostureRenderer::show_dashboard_snapshot(const FirewallState &state) const 
     ui_.key_value("Path", active_path_summary(state) + "  •  " + vpn);
     if (!state.sockets.available)
         ui_.key_value("Exposure", ui_.warning("listener scan unavailable"));
-    else {
+    else if (!policy_details_available) {
+        ui_.key_value("Exposure", ui_.warning("active firewall policy is unavailable"));
+    } else {
         const auto listeners = summarize_listener_exposure(state.sockets);
         ui_.key_value("Exposure",
                       std::to_string(listeners.logical_network_services) + " service(s)  •  " +
                           std::to_string(listeners.network_reachable_bindings) + " bindings  •  " +
-                          std::to_string(exposure.ports) + " explicit ports  •  forwarding: " +
+                          std::to_string(exposure.ports) + " explicit ports  •  " +
+                          std::to_string(exposure.protocols) + " protocol rules  •  forwarding: " +
                           (exposure.forwarding ? ui_.warning("enabled") : ui_.success("disabled")));
     }
     const std::string denied =
@@ -133,14 +163,27 @@ void PostureRenderer::show_dashboard_snapshot(const FirewallState &state) const 
 void PostureRenderer::show_overview(const FirewallState &state) const {
     ui_.section("Active interface assignments");
     bool found = false;
+    if (!observation_available(state.active_zones_status))
+        std::cout << "  " << ui_.warning("Active-zone query is unavailable.") << '\n';
     for (const auto &[zone, interfaces] : state.active_zone_interfaces)
         for (const auto &interface : interfaces) {
             std::cout << "  " << ui_.accent(interface) << "  " << ui_.muted("→") << "  " << zone
                       << (zone == state.default_zone ? ui_.muted("  default") : "") << '\n';
             found = true;
         }
+    for (const auto &[zone, sources] : state.active_zone_sources)
+        for (const auto &source : sources) {
+            std::cout << "  " << ui_.accent(source) << "  " << ui_.muted("→") << "  " << zone
+                      << ui_.muted("  source")
+                      << (zone == state.default_zone ? ui_.muted("  default") : "") << '\n';
+            found = true;
+        }
     if (!found)
-        std::cout << "  " << ui_.muted("No active zone assignments reported.") << '\n';
+        std::cout << "  "
+                  << (!observation_available(state.active_zones_status)
+                          ? ui_.warning("Active-zone assignments are unavailable.")
+                          : ui_.muted("No active zone assignments reported."))
+                  << '\n';
     ui_.section("NetworkManager device state");
     if (!state.network_manager.available)
         std::cout << "  " << ui_.warning("NetworkManager status is unavailable.") << '\n';
@@ -197,27 +240,45 @@ void PostureRenderer::show_overview(const FirewallState &state) const {
         ui_.key_value("firewalld service journal entries",
                       std::to_string(state.security_signals.firewalld_service_events));
     const auto exposure = active_exposure_counts(state);
+    const bool policy_details_available = active_zone_details_available(state);
     ui_.section("Exposure summary");
     ui_.key_value("Allowed services",
-                  exposure.services == 0
+                  !policy_details_available ? ui_.warning("UNKNOWN")
+                  : exposure.services == 0
                       ? ui_.success("NONE")
                       : ui_.warning(std::to_string(exposure.services) + " configured"));
     ui_.key_value("Explicit ports",
-                  exposure.ports == 0
+                  !policy_details_available ? ui_.warning("UNKNOWN")
+                  : exposure.ports == 0
                       ? ui_.success("NONE")
                       : ui_.warning(std::to_string(exposure.ports) + " configured"));
-    ui_.key_value("Rich rules", std::to_string(exposure.rich_rules));
+    ui_.key_value("Allowed protocols",
+                  !policy_details_available ? ui_.warning("UNKNOWN")
+                  : exposure.protocols == 0
+                      ? ui_.success("NONE")
+                      : ui_.warning(std::to_string(exposure.protocols) + " configured"));
+    ui_.key_value("Source-port rules",
+                  !policy_details_available ? ui_.warning("UNKNOWN")
+                  : exposure.source_ports == 0
+                      ? ui_.success("NONE")
+                      : ui_.warning(std::to_string(exposure.source_ports) + " configured"));
+    ui_.key_value("Rich rules", !policy_details_available ? ui_.warning("UNKNOWN")
+                                                          : std::to_string(exposure.rich_rules));
     ui_.key_value("Forward ports",
-                  exposure.forward_ports == 0
+                  !policy_details_available ? ui_.warning("UNKNOWN")
+                  : exposure.forward_ports == 0
                       ? ui_.success("NONE")
                       : ui_.warning(std::to_string(exposure.forward_ports) + " configured"));
-    ui_.key_value("Intra-zone forwarding",
-                  exposure.forwarding ? ui_.warning("ENABLED") : ui_.success("DISABLED"));
-    ui_.key_value("Masquerading",
-                  exposure.masquerade ? ui_.warning("ENABLED") : ui_.success("DISABLED"));
-    ui_.key_value("Active policies", state.active_policies.empty()
-                                         ? ui_.muted("none")
-                                         : items_or_none(state.active_policies));
+    ui_.key_value("Intra-zone forwarding", !policy_details_available ? ui_.warning("UNKNOWN")
+                                           : exposure.forwarding     ? ui_.warning("ENABLED")
+                                                                     : ui_.success("DISABLED"));
+    ui_.key_value("Masquerading", !policy_details_available ? ui_.warning("UNKNOWN")
+                                  : exposure.masquerade     ? ui_.warning("ENABLED")
+                                                            : ui_.success("DISABLED"));
+    ui_.key_value("Active policies",
+                  !observation_available(state.active_policies_status) ? ui_.warning("UNKNOWN")
+                  : state.active_policies.empty() ? ui_.muted("none")
+                                                  : items_or_none(state.active_policies));
 }
 void PostureRenderer::show_listeners(const FirewallState &state) const {
     ui_.section("Network-visible listening sockets");
@@ -267,9 +328,13 @@ void PostureRenderer::show_threat_assessment(const FirewallState &state) const {
 void PostureRenderer::show_zones(const FirewallState &state, const std::string &title,
                                  ZoneView view, ZoneScope scope) const {
     ui_.section(title);
+    if (!observation_available(state.runtime_zones_status)) {
+        std::cout << "  " << ui_.warning("Runtime zone policy is unavailable.") << '\n';
+        return;
+    }
     bool displayed = false;
     for (const auto &[name, zone] : state.runtime_zones) {
-        const bool active = state.active_zone_interfaces.contains(name);
+        const bool active = is_zone_active(state, name);
         const bool default_zone = name == state.default_zone;
         if (scope == ZoneScope::ActiveAndDefault && !active && !default_zone)
             continue;
@@ -290,6 +355,10 @@ void PostureRenderer::show_zones(const FirewallState &state, const std::string &
             ui_.key_value("services", items_or_none(zone.services));
         if (view == ZoneView::All || view == ZoneView::Ports)
             ui_.key_value("ports", annotated_port_list(zone.ports));
+        if (view == ZoneView::All || view == ZoneView::Ports) {
+            ui_.key_value("protocols", items_or_none(zone.protocols));
+            ui_.key_value("source ports", items_or_none(zone.source_ports));
+        }
         if (view == ZoneView::All || view == ZoneView::RichRules)
             ui_.key_value("rich rules", std::to_string(zone.rich_rules.size()));
         if (view == ZoneView::All || view == ZoneView::Routing) {
@@ -301,10 +370,12 @@ void PostureRenderer::show_zones(const FirewallState &state, const std::string &
         }
         if (view == ZoneView::Drift) {
             const auto permanent = state.permanent_zones.find(name);
-            const bool same = permanent != state.permanent_zones.end() &&
+            const bool permanent_available = observation_available(state.permanent_zones_status);
+            const bool same = permanent_available && permanent != state.permanent_zones.end() &&
                               zone_policies_equal(zone, permanent->second);
-            ui_.key_value("policy configuration", same ? ui_.success("matches permanent")
-                                                       : ui_.warning("differs from permanent"));
+            ui_.key_value("policy configuration", !permanent_available ? ui_.warning("unknown")
+                                                  : same ? ui_.success("matches permanent")
+                                                         : ui_.warning("differs from permanent"));
             if (permanent != state.permanent_zones.end() &&
                 zone.interfaces != permanent->second.interfaces)
                 ui_.key_value("interface binding",

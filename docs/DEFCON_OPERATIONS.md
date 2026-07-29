@@ -28,16 +28,20 @@ Use `./build/ffc --mode hostile` before a DEF CON, hotel, conference, or other u
 
 Treat a readiness exit status of `1` as a review signal and `2` as a failed posture check. Re-run the report after changing networks, resuming from sleep, connecting a VPN, or returning from an event venue.
 
+Readiness exit codes express policy assessment, not merely whether the application launched. An unavailable or partial core firewall observation produces a warning rather than a clean result. The report treats interface-bound and source-bound zones as active, compares runtime and permanent zones in both directions, and warns whenever active policy details or other firewalld policy surfaces remain outside collection.
+
 ## What to review
 
 - Active interfaces and zone assignments, rather than every configured zone.
 - NetworkManager device state without printing connection names or Wi-Fi SSIDs. Recheck it after suspend, venue changes, and VPN transitions; a connected device without an active-zone binding deserves investigation.
 - Any allowed service, explicit port, rich rule, or forward-port in an active zone.
+- Protocol and source-port selectors in an active zone. They are policy selectors, not proof that a service is listening.
 - Network-reachable local listening sockets. This is intentionally a separate signal: a firewall exception without a listener has different risk from a listening process that becomes reachable after a zone or network change.
 - An active zone with target `ACCEPT`; it accepts otherwise-unmatched traffic.
 - Intra-zone forwarding, masquerading, and source bindings, which can alter traffic flow or trust.
 - Runtime/permanent drift. A firewalld reload replaces runtime configuration with permanent configuration, so do not assume a tested runtime posture will survive a reload.
 - Permanent configuration validity, checked through `firewall-cmd --check-config`.
+- Active firewalld policies. Version 0.1.x lists their names but does not yet assess their detailed rules, so their presence is a deliberate coverage warning.
 
 Do not automatically reassign a VPN or tunnel interface. Review it separately: firewalld and NetworkManager both participate in interface/connection zone handling, and an inappropriate reassignment can break the tunnel or weaken its intended traffic boundary. `ffc` detects the locally installed NordVPN client and common active tunnel interface names, but treats no installed or active VPN as normal rather than a readiness failure.
 

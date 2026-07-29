@@ -33,8 +33,8 @@ OperationsConsole
 
 Implementation files follow the same boundaries under `src/`: `app/`, `core/`, `firewall/`, `network/`, `security/`, and `ui/`. The network diagnostics area is intentionally split into `network_diagnostics.cpp` (probe orchestration), `network_address.cpp` (scope classification), and `network_path_parser.cpp` (untrusted tool-output parsing); their shared public model is `include/ffc/network_route.hpp`. Public interfaces remain under `include/ffc/` so callers do not depend on implementation layout.
 
-The runner uses `execvp`; it never invokes a shell. Standard output and standard error are captured separately.
+The runner uses `execvp`; it never invokes a shell. Standard output and standard error are captured separately. Each command has a dedicated process group, a bounded execution deadline, and a bounded post-termination pipe-drain period so a descendant retaining an inherited pipe cannot hang the console indefinitely.
 
-`FirewallBackend` deliberately contains only inspection in 0.1. Future mutation APIs will be introduced only with snapshots, plans, explicit confirmation, verification, audit records, and rollback.
+`FirewallBackend` deliberately contains only inspection in 0.1.x. Firewall observations carry available, partial, or unavailable collection status; readiness renders unavailable policy evidence as a warning rather than a safe value. Future mutation APIs will be introduced only with snapshots, plans, explicit confirmation, verification, audit records, and rollback.
 
 The command backend is a transitional adapter for `firewall-cmd`. A future D-Bus implementation can satisfy the same backend interface without changing the menu or readiness logic.

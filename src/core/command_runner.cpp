@@ -15,7 +15,6 @@
 namespace ffc {
 namespace {
 constexpr std::size_t maximum_captured_output = 1024U * 1024U;
-constexpr auto command_timeout = std::chrono::seconds(60);
 
 void close_pipe(int (&pipe_descriptors)[2]) {
     for (auto &descriptor : pipe_descriptors) {
@@ -51,6 +50,21 @@ void append_error(std::string &target, const std::string &detail) {
     target += detail;
 }
 
+void terminate_process_group(const pid_t child) {
+    if (kill(-child, SIGKILL) != 0)
+        (void)kill(child, SIGKILL);
+}
+
+void write_child_error(const std::string &command, const char *context, const int error_number) {
+    const char *detail = std::strerror(error_number);
+    (void)write(STDERR_FILENO, context, std::strlen(context));
+    (void)write(STDERR_FILENO, " '", 2U);
+    (void)write(STDERR_FILENO, command.data(), command.size());
+    (void)write(STDERR_FILENO, "': ", 3U);
+    (void)write(STDERR_FILENO, detail, std::strlen(detail));
+    (void)write(STDERR_FILENO, "\n", 1U);
+}
+
 struct CommunicationResult {
     std::string standard_output;
     std::string standard_error;
@@ -66,7 +80,8 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
                                              const int stderr_descriptor,
                                              const int input_descriptor,
                                              const std::string &standard_input, const pid_t child,
-                                             const std::chrono::steady_clock::time_point deadline) {
+                                             const std::chrono::steady_clock::time_point deadline,
+                                             const std::chrono::milliseconds pipe_drain_grace) {
     CommunicationResult result;
     std::array<pollfd, 3> descriptors{
         {{stdout_descriptor, POLLIN, 0},
@@ -75,6 +90,14 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
     int open_descriptors = standard_input.empty() ? 2 : 3;
     std::size_t input_offset = 0;
     bool terminated = false;
+    std::chrono::steady_clock::time_point drain_deadline{};
+    const auto terminate = [&]() {
+        if (!terminated) {
+            terminate_process_group(child);
+            terminated = true;
+            drain_deadline = std::chrono::steady_clock::now() + pipe_drain_grace;
+        }
+    };
     if (standard_input.empty()) {
         close(descriptors[2].fd);
         descriptors[2].fd = -1;
@@ -83,8 +106,7 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
         if (flags < 0 || fcntl(input_descriptor, F_SETFL, flags | O_NONBLOCK) != 0) {
             result.input_failed = true;
             result.input_error = std::strerror(errno);
-            kill(child, SIGKILL);
-            terminated = true;
+            terminate();
             close(descriptors[2].fd);
             descriptors[2].fd = -1;
             --open_descriptors;
@@ -98,12 +120,25 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
     while (open_descriptors > 0) {
         const auto now = std::chrono::steady_clock::now();
         if (!terminated && now >= deadline) {
-            kill(child, SIGKILL);
-            terminated = result.timed_out = true;
+            result.timed_out = true;
+            terminate();
+        }
+        if (terminated && now >= drain_deadline) {
+            result.output_failed = true;
+            append_error(result.standard_error,
+                         "command descendants kept output pipes open after termination");
+            for (auto &descriptor : descriptors) {
+                if (descriptor.fd >= 0)
+                    close(descriptor.fd);
+                descriptor.fd = -1;
+            }
+            break;
         }
         const int wait_milliseconds =
             terminated
-                ? 1000
+                ? static_cast<int>(std::max<long>(
+                      1, std::chrono::duration_cast<std::chrono::milliseconds>(drain_deadline - now)
+                             .count()))
                 : static_cast<int>(std::max<long>(
                       1, std::min<long>(
                              std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
@@ -115,8 +150,7 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
             result.output_failed = true;
             append_error(result.standard_error,
                          std::string("command output polling failed: ") + std::strerror(errno));
-            if (!terminated)
-                kill(child, SIGKILL);
+            terminate();
             for (auto &descriptor : descriptors) {
                 if (descriptor.fd >= 0)
                     close(descriptor.fd);
@@ -136,10 +170,7 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
                     result.output_failed = true;
                     append_error(result.standard_error, "command output descriptor became invalid");
                 }
-                if (!terminated) {
-                    kill(child, SIGKILL);
-                    terminated = true;
-                }
+                terminate();
                 close(descriptor.fd);
                 descriptor.fd = -1;
                 --open_descriptors;
@@ -193,8 +224,8 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
                                            : 0U;
                 target.append(buffer.data(), std::min(static_cast<std::size_t>(count), remaining));
                 if (static_cast<std::size_t>(count) > remaining && !terminated) {
-                    kill(child, SIGKILL);
-                    terminated = result.truncated = true;
+                    result.truncated = true;
+                    terminate();
                 }
             }
             if (count < 0 && errno == EINTR)
@@ -203,10 +234,7 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
                 result.output_failed = true;
                 append_error(result.standard_error,
                              std::string("command output read failed: ") + std::strerror(errno));
-                if (!terminated) {
-                    kill(child, SIGKILL);
-                    terminated = true;
-                }
+                terminate();
             }
             if (count <= 0) {
                 close(descriptor.fd);
@@ -221,6 +249,12 @@ CommunicationResult communicate_with_process(const int stdout_descriptor,
     return result;
 }
 } // namespace
+ProcessCommandRunner::ProcessCommandRunner(const std::chrono::milliseconds timeout,
+                                           const std::chrono::milliseconds pipe_drain_grace)
+    : timeout_(timeout.count() > 0 ? timeout : std::chrono::milliseconds{1}),
+      pipe_drain_grace_(pipe_drain_grace.count() > 0 ? pipe_drain_grace
+                                                     : std::chrono::milliseconds{1}) {}
+
 CommandResult ProcessCommandRunner::run(const std::vector<std::string> &arguments) const {
     return run_with_input(arguments, {});
 }
@@ -262,17 +296,28 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
         close(out_pipe[1]);
         close(err_pipe[0]);
         close(err_pipe[1]);
+        // Keep utilities and descendants in a dedicated process group, so a
+        // safety stop also closes inherited output pipes. This follows dup2 so
+        // a failure diagnostic is captured by the parent.
+        if (setpgid(0, 0) != 0) {
+            write_child_error(arguments.front(), "could not isolate command process", errno);
+            _exit(127);
+        }
         std::vector<char *> argv;
         argv.reserve(arguments.size() + 1);
         for (const auto &argument : arguments)
             argv.push_back(const_cast<char *>(argument.c_str()));
         argv.push_back(nullptr);
         execvp(argv[0], argv.data());
+        write_child_error(arguments.front(), "could not execute command", errno);
         _exit(127);
     }
+    // The child also calls setpgid to avoid a race with exec. Either side can
+    // win; failure here only means the child has already established its group.
+    (void)setpgid(pid, pid);
     close(input_pipe[0]);
     input_pipe[0] = -1;
-    const auto deadline = std::chrono::steady_clock::now() + command_timeout;
+    const auto deadline = std::chrono::steady_clock::now() + timeout_;
     close(out_pipe[1]);
     out_pipe[1] = -1;
     close(err_pipe[1]);
@@ -282,8 +327,9 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
     const int input_descriptor = input_pipe[1];
     out_pipe[0] = err_pipe[0] = -1;
     input_pipe[1] = -1;
-    auto output_result = communicate_with_process(stdout_descriptor, stderr_descriptor,
-                                                  input_descriptor, standard_input, pid, deadline);
+    auto output_result =
+        communicate_with_process(stdout_descriptor, stderr_descriptor, input_descriptor,
+                                 standard_input, pid, deadline, pipe_drain_grace_);
     int status{};
     pid_t waited{};
     do {
@@ -295,7 +341,9 @@ CommandResult ProcessCommandRunner::run_with_input(const std::vector<std::string
         output_result.output_failed = true;
     }
     if (output_result.timed_out)
-        append_error(output_result.standard_error, "command exceeded 60-second safety limit");
+        append_error(output_result.standard_error, "command exceeded " +
+                                                       std::to_string(timeout_.count()) +
+                                                       "-millisecond safety limit");
     if (output_result.truncated)
         append_error(output_result.standard_error, "command output exceeded 1 MiB safety limit");
     if (output_result.input_rejected)
