@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>FFC // Posture Overview</title>
+    <link rel="stylesheet" href="/assets/dashboard.css">
+    <script src="/assets/dashboard.js" type="module"></script>
+  </head>
+  <body>
+    <div class="scanline" aria-hidden="true"></div>
+    <aside class="sidebar">
+      <a class="sidebar-brand" href="/"><strong>FFC</strong><span>LOCAL CONSOLE</span></a>
+      <nav aria-label="Primary navigation"><a href="/"><span>00</span>Home</a><a href="/overview" aria-current="page"><span>01</span>Overview</a><a href="/firewall"><span>02</span>Firewall</a><a href="/network"><span>03</span>Network</a><a href="/exposure"><span>04</span>Exposure</a><a href="/evidence"><span>05</span>Evidence</a><a href="/session"><span>06</span>Session</a></nav>
+      <div class="sidebar-boundary"><span>BOUNDARY</span><strong>127.0.0.1</strong><small>READ ONLY</small></div>
+    </aside>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">FEDORA FIREWALL CONTROL // LOCAL CONSOLE</p>
+        <h1>Posture overview<span class="cursor" aria-hidden="true">_</span></h1>
+      </div>
+      <div class="header-actions">
+        <div class="connection" id="connection-state" role="status" aria-live="polite">
+          <span class="pulse" aria-hidden="true"></span>
+          <span>COLLECTING</span>
+        </div>
+        <button id="refresh" type="button" title="Collect a new native posture snapshot">Refresh evidence</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="overview" class="hero panel anchor-target" aria-labelledby="posture-title">
+        <div class="hero-status">
+          <p class="section-label">CURRENT ASSESSMENT</p>
+          <h2 id="posture-title">Loading posture…</h2>
+          <p id="recommendation">Waiting for validated native evidence.</p>
+          <div class="recommendation-meta" aria-label="Recommendation details">
+            <span id="recommendation-severity" class="meta-chip">SEVERITY —</span>
+            <span id="recommendation-category" class="meta-chip">CATEGORY —</span>
+            <a id="recommendation-destination" class="workflow-link" href="/overview">Open overview →</a>
+          </div>
+        </div>
+        <dl class="hero-metrics">
+          <div><dt>Mode</dt><dd id="mode">—</dd></div>
+          <div><dt>Blockers</dt><dd id="blockers">—</dd></div>
+          <div><dt>Review</dt><dd id="reviews">—</dd></div>
+          <div><dt>Coverage gaps</dt><dd id="gaps">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="operation-strip panel" aria-label="Snapshot operational status">
+        <div><span>DEF CON readiness</span><strong id="readiness">—</strong></div>
+        <div><span>Evidence state</span><strong id="evidence-state">—</strong></div>
+        <div><span>Snapshot freshness</span><strong id="freshness">—</strong></div>
+        <div><span>Next collection</span><strong id="refresh-countdown">MANUAL</strong></div>
+      </section>
+
+      <section class="tool-deck panel" aria-labelledby="tool-deck-title">
+        <div>
+          <p class="section-label">READ-ONLY TOOLS</p>
+          <h2 id="tool-deck-title">Snapshot controls</h2>
+        </div>
+        <div class="tool-actions">
+          <button id="toggle-refresh" class="quiet-button" type="button">Pause auto-refresh</button>
+          <button id="copy-summary" class="quiet-button" type="button" disabled>Copy summary</button>
+          <button id="export-snapshot" class="quiet-button" type="button" disabled>Export JSON</button>
+        </div>
+        <span id="action-feedback" class="action-feedback" role="status" aria-live="polite"></span>
+      </section>
+
+      <section class="guidance panel" aria-labelledby="guidance-title">
+        <div class="guidance-heading">
+          <p class="section-label">OPERATOR GUIDANCE</p>
+          <h2 id="guidance-title">What needs attention</h2>
+        </div>
+        <ul id="guidance-list" class="guidance-list" aria-live="polite">
+          <li>
+            <b class="guidance-kind">ANALYZING</b>
+            <div><strong>Evaluating snapshot</strong><span>Waiting for validated evidence.</span></div>
+          </li>
+        </ul>
+      </section>
+
+      <div id="error-banner" class="error-banner" role="alert" hidden>
+        <strong>SNAPSHOT UNAVAILABLE</strong>
+        <span id="error-message">The local evidence service could not be reached.</span>
+      </div>
+
+      <section class="overview-pivots" aria-label="Investigation pivots">
+        <a class="panel overview-pivot" href="/firewall"><div><span>01</span><h2>Firewall</h2></div><dl><div><dt>Service</dt><dd id="firewall-active">—</dd></div><div><dt>Zone</dt><dd id="firewall-zone">—</dd></div></dl><b>INSPECT ENFORCEMENT →</b></a>
+        <a class="panel overview-pivot" href="/exposure"><div><span>02</span><h2>Exposure</h2></div><dl><div><dt>Reachable bindings</dt><dd id="binding-count">—</dd></div><div><dt>Port rules</dt><dd id="port-count">—</dd></div></dl><b>INSPECT SURFACE →</b></a>
+        <a class="panel overview-pivot" href="/network"><div><span>03</span><h2>Network</h2></div><dl><div><dt>Interface</dt><dd id="overview-interface">—</dd></div><div><dt>Tunnel</dt><dd id="overview-tunnel">—</dd></div></dl><b>INSPECT PATH →</b></a>
+        <a class="panel overview-pivot" href="/evidence"><div><span>04</span><h2>Evidence</h2></div><dl><div><dt>Collection state</dt><dd id="overview-evidence">—</dd></div><div><dt>Coverage gaps</dt><dd id="overview-gaps">—</dd></div></dl><b>INSPECT COVERAGE →</b></a>
+      </section>
+    </main>
+
+    <footer>
+      <div><span id="hostname">local host</span> · FFC <span id="app-version">—</span></div>
+      <div>Snapshot <span id="snapshot-id">—</span> · <span id="snapshot-source">—</span> · <time id="collected-at">not collected</time></div>
+      <div class="read-only">READ ONLY // [R] REFRESH // [P] PAUSE</div>
+    </footer>
+  </body>
+</html>

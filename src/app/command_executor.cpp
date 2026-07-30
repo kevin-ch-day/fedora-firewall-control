@@ -11,10 +11,11 @@
 namespace ffc {
 namespace {
 void print_usage() {
-    std::cout << "Usage: ffc [--status | --snapshot-json | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --log-analysis | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
+    std::cout << "Usage: ffc [--status | --snapshot-json | --snapshot-json-v2 | --readiness | --listeners | --threat-assessment | --network-diagnostics [--extended|--advanced] | --security-advisories | --network-metadata [--enrich] | --network-history | --log-analysis | --configure-ipify-key | --mode [normal|hostile] | --help]\n\n"
               << "Without an option, opens the interactive read-only dashboard.\n"
               << "  --status     Print firewall posture and exposure summary.\n"
               << "  --snapshot-json  Print a versioned read-only dashboard snapshot as JSON.\n"
+              << "  --snapshot-json-v2  Print the parallel structured dashboard-v2 snapshot.\n"
               << "  --readiness  Print readiness checks (exit: 0 pass, 1 warning, 2 fail).\n"
               << "  --listeners  Print non-loopback local listening sockets.\n"
               << "  --threat-assessment  Review local evidence, exposure, and telemetry gaps; no attack verdicts.\n"
@@ -103,6 +104,10 @@ int CommandExecutor::execute(const CommandLine& command) const {
     const auto state = posture_.inspect();
     if (command.action == CommandAction::SnapshotJson) {
         std::cout << serialize_dashboard_snapshot_json(make_dashboard_snapshot(state));
+        return 0;
+    }
+    if (command.action == CommandAction::SnapshotJsonV2) {
+        std::cout << serialize_dashboard_snapshot_json_v2(make_dashboard_snapshot(state));
         return 0;
     }
     if (command.action == CommandAction::Status) { dashboard_.show_status(state); dashboard_.show_overview(state); return state.installed ? 0 : 2; }

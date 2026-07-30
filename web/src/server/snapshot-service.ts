@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 import { SNAPSHOT_CACHE_TTL_MS } from "./config.js";
 import { type FfcRunner } from "./ffc-runner.js";
 import { type SnapshotValidator, type ValidatedSnapshot } from "./schema-validator.js";
@@ -11,6 +13,13 @@ export type SnapshotSource = "fresh" | "cache";
 export interface SnapshotResult {
   readonly snapshot: ValidatedSnapshot;
   readonly source: SnapshotSource;
+}
+
+export type SnapshotCacheState = "empty" | "fresh" | "expired";
+
+export interface SnapshotServiceStatus {
+  readonly cache: SnapshotCacheState;
+  readonly collectionInFlight: boolean;
 }
 
 export class NativeSnapshotCollector implements SnapshotCollector {
@@ -41,12 +50,19 @@ export class SnapshotService {
   ) {
     this.#collector = collector;
     this.#cacheTtlMs = options.cacheTtlMs ?? SNAPSHOT_CACHE_TTL_MS;
-    this.#clock = options.clock ?? Date.now;
+    this.#clock = options.clock ?? (() => performance.now());
+  }
+
+  public status(): SnapshotServiceStatus {
+    return {
+      cache: this.#cacheState(this.#clock()),
+      collectionInFlight: this.#inFlight !== undefined,
+    };
   }
 
   public async getSnapshot(): Promise<SnapshotResult> {
     const now = this.#clock();
-    if (this.#cached !== undefined && now - this.#cached.collectedAt < this.#cacheTtlMs) {
+    if (this.#cacheState(now) === "fresh" && this.#cached !== undefined) {
       return { snapshot: this.#cached.snapshot, source: "cache" };
     }
     if (this.#inFlight !== undefined) {
@@ -64,5 +80,13 @@ export class SnapshotService {
         this.#inFlight = undefined;
       }
     }
+  }
+
+  #cacheState(now: number): SnapshotCacheState {
+    if (this.#cached === undefined) {
+      return "empty";
+    }
+    const age = now - this.#cached.collectedAt;
+    return age >= 0 && age < this.#cacheTtlMs ? "fresh" : "expired";
   }
 }

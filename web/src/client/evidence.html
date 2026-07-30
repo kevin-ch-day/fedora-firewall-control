@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark">
+    <title>FFC // Evidence Coverage</title><link rel="stylesheet" href="/assets/dashboard.css"><script src="/assets/section-page.js" type="module"></script>
+  </head>
+  <body data-page="evidence">
+    <div class="scanline" aria-hidden="true"></div>
+    <aside class="sidebar"><a class="sidebar-brand" href="/"><strong>FFC</strong><span>LOCAL CONSOLE</span></a><nav aria-label="Primary navigation"><a href="/"><span>00</span>Home</a><a href="/overview"><span>01</span>Overview</a><a href="/firewall"><span>02</span>Firewall</a><a href="/network"><span>03</span>Network</a><a href="/exposure"><span>04</span>Exposure</a><a href="/evidence" aria-current="page"><span>05</span>Evidence</a><a href="/session"><span>06</span>Session</a></nav><div class="sidebar-boundary"><span>BOUNDARY</span><strong>127.0.0.1</strong><small>READ ONLY</small></div></aside>
+    <header class="masthead page-masthead"><div><p class="eyebrow">FFC // COLLECTION QUALITY</p><h1>Evidence coverage<span class="cursor" aria-hidden="true">_</span></h1></div><div class="header-actions"><div class="connection" id="connection-state" role="status" aria-live="polite"><span class="pulse"></span><span>COLLECTING</span></div><button id="refresh" type="button">Refresh evidence</button></div></header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden><strong>SNAPSHOT UNAVAILABLE</strong><span id="error-message">Evidence coverage could not be collected.</span></div>
+      <section class="page-intro panel"><div><p class="section-label">EVIDENCE QUALITY</p><h2 id="page-status">Evaluating collection coverage…</h2><p>Unavailable and partial sources are never interpreted as safe values.</p></div><dl class="page-metrics"><div><dt>Total sources</dt><dd id="evidence-total">—</dd></div><div><dt>Collected</dt><dd id="evidence-available-count">—</dd></div><div><dt>Needs attention</dt><dd id="evidence-attention-count">—</dd></div></dl></section>
+      <section class="evidence-page-grid">
+        <article class="panel card"><div class="card-heading"><span>01</span><h2>Needs attention</h2></div><ul id="evidence-list" class="evidence-list"><li><span>Waiting for snapshot</span><span class="evidence-detail"></span><b class="status unknown">UNKNOWN</b></li></ul></article>
+        <article class="panel card"><div class="card-heading"><span>02</span><h2>Collected sources</h2></div><ul id="available-evidence-list" class="evidence-list"><li><span>Waiting for snapshot</span><span class="evidence-detail"></span><b class="status unknown">UNKNOWN</b></li></ul></article>
+      </section>
+    </main>
+    <footer><div><span id="hostname">local host</span> · FFC <span id="app-version">—</span></div><div>Snapshot <span id="snapshot-id">—</span> · <span id="snapshot-source">—</span> · <time id="collected-at">not collected</time></div><div class="read-only">READ ONLY // EVIDENCE</div></footer>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>FFC // Network Path</title>
+    <link rel="stylesheet" href="/assets/dashboard.css">
+    <script src="/assets/section-page.js" type="module"></script>
+  </head>
+  <body data-page="network">
+    <div class="scanline" aria-hidden="true"></div>
+    <aside class="sidebar"><a class="sidebar-brand" href="/"><strong>FFC</strong><span>LOCAL CONSOLE</span></a><nav aria-label="Primary navigation"><a href="/"><span>00</span>Home</a><a href="/overview"><span>01</span>Overview</a><a href="/firewall"><span>02</span>Firewall</a><a href="/network" aria-current="page"><span>03</span>Network</a><a href="/exposure"><span>04</span>Exposure</a><a href="/evidence"><span>05</span>Evidence</a><a href="/session"><span>06</span>Session</a></nav><div class="sidebar-boundary"><span>BOUNDARY</span><strong>127.0.0.1</strong><small>READ ONLY</small></div></aside>
+    <header class="masthead page-masthead">
+      <div><p class="eyebrow">FFC // NETWORK AND VPN</p><h1>Network path<span class="cursor" aria-hidden="true">_</span></h1></div>
+      <div class="header-actions">
+        <div class="connection" id="connection-state" role="status" aria-live="polite"><span class="pulse"></span><span>COLLECTING</span></div>
+        <button id="refresh" type="button">Refresh evidence</button>
+      </div>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden><strong>SNAPSHOT UNAVAILABLE</strong><span id="error-message">Network evidence could not be collected.</span></div>
+      <section class="page-intro panel">
+        <div><p class="section-label">CURRENT ROUTE CONTEXT</p><h2 id="page-status">Collecting network evidence…</h2><p>Local interface, firewalld zone, tunnel detection, and verification coverage.</p></div>
+        <dl class="page-metrics"><div><dt>Interface</dt><dd id="network-interface">—</dd></div><div><dt>Tunnel</dt><dd id="network-tunnel">—</dd></div><div><dt>Zone</dt><dd id="network-zone">—</dd></div></dl>
+      </section>
+      <section class="section-card-grid">
+        <article class="panel card"><div class="card-heading"><span>01</span><h2>Connection</h2></div><dl class="data-list">
+          <div><dt>Physical interface</dt><dd id="network-interface-detail">—</dd></div><div><dt>Connection profile</dt><dd id="network-profile">—</dd></div><div><dt>Profile autoconnect</dt><dd id="network-autoconnect">—</dd></div><div><dt>Firewall zone</dt><dd id="network-zone-detail">—</dd></div>
+        </dl></article>
+        <article class="panel card"><div class="card-heading"><span>02</span><h2>Tunnel verification</h2></div><dl class="data-list">
+          <div><dt>Detected tunnel</dt><dd id="network-tunnel-detail">—</dd></div><div><dt>VPN default route</dt><dd id="network-vpn">—</dd></div><div><dt>DNS path</dt><dd id="network-dns">—</dd></div><div><dt>Kill switch</dt><dd id="network-killswitch">—</dd></div>
+        </dl></article>
+        <article class="panel card"><div class="card-heading"><span>03</span><h2>Collection coverage</h2></div><dl class="data-list">
+          <div><dt>Device inventory</dt><dd id="network-device-status">—</dd></div><div><dt>Profile inventory</dt><dd id="network-profile-status">—</dd></div><div><dt>Tunnel detection</dt><dd id="network-tunnel-status">—</dd></div><div><dt>VPN route evidence</dt><dd id="network-vpn-status">—</dd></div><div><dt>DNS evidence</dt><dd id="network-dns-status">—</dd></div><div><dt>Kill-switch evidence</dt><dd id="network-killswitch-status">—</dd></div>
+        </dl></article>
+        <aside class="panel limitation-panel"><p class="section-label">INTERPRETATION BOUNDARY</p><h2>Detected is not verified</h2><p>A tunnel-like interface does not prove the default route or DNS traffic uses it. Unavailable verification remains unknown until collected by a future native snapshot.</p></aside>
+      </section>
+    </main>
+    <footer><div><span id="hostname">local host</span> · FFC <span id="app-version">—</span></div><div>Snapshot <span id="snapshot-id">—</span> · <span id="snapshot-source">—</span> · <time id="collected-at">not collected</time></div><div class="read-only">READ ONLY // NETWORK</div></footer>
+  </body>
+</html>

@@ -16,6 +16,10 @@ test("server can listen on IPv4 loopback without exposing a wildcard address", a
   assert.equal(typeof address, "object");
   if (typeof address === "object" && address !== null) {
     assert.equal(address.address, "127.0.0.1");
+    const oversized = await fetch(`http://127.0.0.1:${String(address.port)}/`, {
+      headers: { "X-Oversized": "x".repeat(9 * 1024) },
+    });
+    assert.equal(oversized.status, 431);
   }
   assert.equal(LOOPBACK_HOST, "127.0.0.1");
   assert.equal(SERVER_PORT, 8787);

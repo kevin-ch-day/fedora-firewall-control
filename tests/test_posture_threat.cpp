@@ -16,12 +16,12 @@
 namespace ffc::test {
 namespace {
 class CoutRedirect final {
-public:
-    explicit CoutRedirect(std::ostream& target) : previous_(std::cout.rdbuf(target.rdbuf())) {}
+  public:
+    explicit CoutRedirect(std::ostream &target) : previous_(std::cout.rdbuf(target.rdbuf())) {}
     ~CoutRedirect() { std::cout.rdbuf(previous_); }
 
-private:
-    std::streambuf* previous_;
+  private:
+    std::streambuf *previous_;
 };
 } // namespace
 
@@ -68,9 +68,9 @@ void run_posture_threat_tests() {
                                               finding.title == "Firewall runtime/permanent drift");
         broad_range = broad_range || (finding.kind == ThreatFindingKind::Exposure &&
                                       finding.title == "Broad inbound port range configured");
-        forwarding_context =
-            forwarding_context || (finding.kind == ThreatFindingKind::ScopeLimit &&
-                                   finding.title == "Intra-zone forwarding topology not established");
+        forwarding_context = forwarding_context ||
+                             (finding.kind == ThreatFindingKind::ScopeLimit &&
+                              finding.title == "Intra-zone forwarding topology not established");
     }
     expect(logging_gap && listener_exposure && drift_candidate && broad_range &&
                forwarding_context && assessment.verdict_rules.size() == 4,
@@ -168,56 +168,58 @@ void run_posture_threat_tests() {
         "1024-65535\n rule family=\"ipv4\" service name=\"ssh\" accept\n");
     default_fallback.permanent_zones["public"] = default_fallback.runtime_zones["public"];
     bool default_exposure = false, default_rich_rules = false;
-    for (const auto& check : assess_readiness(default_fallback)) {
-        default_exposure = default_exposure ||
-                           (check.label == "inbound services, ports, and protocols" &&
-                            check.level == CheckLevel::Warn);
-        default_rich_rules = default_rich_rules ||
-                             (check.label == "active rich rules" && check.level == CheckLevel::Warn);
+    for (const auto &check : assess_readiness(default_fallback)) {
+        default_exposure =
+            default_exposure || (check.label == "inbound services, ports, and protocols" &&
+                                 check.level == CheckLevel::Warn);
+        default_rich_rules = default_rich_rules || (check.label == "active rich rules" &&
+                                                    check.level == CheckLevel::Warn);
     }
     bool default_rich_finding = false;
     const auto default_assessment = assess_threat_evidence(default_fallback);
-    for (const auto& finding : default_assessment.findings)
-        default_rich_finding = default_rich_finding ||
-                               (finding.title == "Applicable-zone rich rules" &&
-                                finding.kind == ThreatFindingKind::Exposure);
+    for (const auto &finding : default_assessment.findings)
+        default_rich_finding =
+            default_rich_finding || (finding.title == "Applicable-zone rich rules" &&
+                                     finding.kind == ThreatFindingKind::Exposure);
     expect(is_zone_applicable(default_fallback, "public") && default_exposure &&
                default_rich_rules && default_rich_finding,
            "assesses default-zone exposure for a connected interface without an explicit binding");
-    expect(!is_connected_transport_device({"lo", "loopback", "connected"}) &&
-               !is_connected_transport_device({"nordlynx", "wireguard", "connected (externally)"}) &&
-               is_connected_transport_device({"enp99s0", "ethernet", "connected"}),
-           "keeps loopback and tunnel devices out of physical-transport zone fallback warnings");
+    expect(
+        !is_connected_transport_device({"lo", "loopback", "connected"}) &&
+            !is_connected_transport_device({"nordlynx", "wireguard", "connected (externally)"}) &&
+            is_connected_transport_device({"enp99s0", "ethernet", "connected"}),
+        "keeps loopback and tunnel devices out of physical-transport zone fallback warnings");
 
     FirewallState multicast_only = state;
     multicast_only.sockets.available = true;
     multicast_only.sockets.listeners = {{"udp", "239.255.255.250:3702", false, true, "wsdd"}};
     bool normal_multicast_info = false;
-    for (const auto& check : assess_readiness(multicast_only))
-        normal_multicast_info = normal_multicast_info ||
-                                (check.label == "multicast listener exposure" &&
-                                 check.level == CheckLevel::Info);
+    for (const auto &check : assess_readiness(multicast_only))
+        normal_multicast_info =
+            normal_multicast_info ||
+            (check.label == "multicast listener exposure" && check.level == CheckLevel::Info);
     multicast_only.operating_mode = OperatingMode::HostileNetwork;
     bool hostile_multicast_warning = false;
-    for (const auto& check : assess_readiness(multicast_only))
-        hostile_multicast_warning = hostile_multicast_warning ||
-                                   (check.label == "multicast listener exposure" &&
-                                    check.level == CheckLevel::Warn);
+    for (const auto &check : assess_readiness(multicast_only))
+        hostile_multicast_warning =
+            hostile_multicast_warning ||
+            (check.label == "multicast listener exposure" && check.level == CheckLevel::Warn);
     expect(normal_multicast_info && hostile_multicast_warning,
            "keeps multicast listener traffic visible and raises it for hostile-network review");
 
     FirewallState dashboard_source;
     dashboard_source.installed = dashboard_source.active = dashboard_source.enabled =
         dashboard_source.permanent_config_checked = dashboard_source.permanent_config_valid = true;
-    dashboard_source.service_state = dashboard_source.service_enablement = dashboard_source.panic_state =
-        dashboard_source.permanent_config = dashboard_source.default_zone_status =
-            dashboard_source.denied_logging_status = dashboard_source.active_zones_status =
-                dashboard_source.runtime_zones_status = dashboard_source.permanent_zones_status =
-                    dashboard_source.active_policies_status = ObservationStatus::Available;
+    dashboard_source.service_state = dashboard_source.service_enablement =
+        dashboard_source.panic_state = dashboard_source.permanent_config =
+            dashboard_source.default_zone_status = dashboard_source.denied_logging_status =
+                dashboard_source.active_zones_status = dashboard_source.runtime_zones_status =
+                    dashboard_source.permanent_zones_status =
+                        dashboard_source.active_policies_status = ObservationStatus::Available;
     dashboard_source.default_zone = "public";
     dashboard_source.log_denied = "all";
-    dashboard_source.runtime_zones["public"] = parse_zone_info(
-        "target: DROP\ninterfaces: enp1s0\nmasquerade: no\nforward: no\n");
+    dashboard_source.runtime_zones["public"] =
+        parse_zone_info("target: DROP\ninterfaces: enp1s0\nmasquerade: no\nforward: no\n");
     dashboard_source.permanent_zones = dashboard_source.runtime_zones;
     dashboard_source.active_zone_interfaces["public"] = {"enp1s0"};
     dashboard_source.network_manager.available = true;
@@ -230,23 +232,32 @@ void run_posture_threat_tests() {
                dashboard_state.defcon_readiness == DefconReadiness::NotEvaluated &&
                dashboard_state.overall_evidence == ObservationStatus::Partial &&
                !dashboard_state.coverage_gaps.empty(),
-           "builds a shared dashboard snapshot with separate normal-mode DEF CON readiness and collector evidence");
+           "builds a shared dashboard snapshot with separate normal-mode DEF CON readiness and "
+           "collector evidence");
 
     FirewallState prioritized = dashboard_source;
     prioritized.network_manager.available = false;
     prioritized.network_manager.diagnostic = "nmcli device status failed";
     prioritized.runtime_zones["public"].ports = {"443/tcp", "8443/tcp"};
     prioritized.runtime_zones["public"].forward = true;
+    prioritized.active_policies = {"allow-host-ipv6"};
+    prioritized.sockets.process_metadata_requested = true;
+    prioritized.sockets.listeners = {{"tcp", "0.0.0.0:443", false, false, "test-service"}};
     const auto prioritized_snapshot = make_dashboard_snapshot(prioritized);
     expect(!prioritized_snapshot.recommendations.empty() &&
                prioritized_snapshot.recommendations.front().category == FindingCategory::Exposure &&
-               prioritized_snapshot.recommendations.front().destination == MenuDestination::Firewall &&
-               prioritized_snapshot.recommendations.front().summary.find("port rule") != std::string::npos &&
-               prioritized_snapshot.recommendations.front().summary.find("forwarding") != std::string::npos,
+               prioritized_snapshot.recommendations.front().destination ==
+                   MenuDestination::Firewall &&
+               prioritized_snapshot.recommendations.front().summary.find("port rule") !=
+                   std::string::npos &&
+               prioritized_snapshot.recommendations.front().summary.find("forwarding") !=
+                   std::string::npos,
            "prioritizes active exposure over an unavailable NetworkManager collector");
-    const auto network_manager_gap = std::find_if(
-        prioritized_snapshot.coverage_gaps.begin(), prioritized_snapshot.coverage_gaps.end(),
-        [](const DashboardFinding& gap) { return gap.id == "evidence.NetworkManager device inventory"; });
+    const auto network_manager_gap =
+        std::find_if(prioritized_snapshot.coverage_gaps.begin(),
+                     prioritized_snapshot.coverage_gaps.end(), [](const DashboardFinding &gap) {
+                         return gap.id == "evidence.NetworkManager device inventory";
+                     });
     expect(network_manager_gap != prioritized_snapshot.coverage_gaps.end() &&
                network_manager_gap->destination == MenuDestination::Network &&
                network_manager_gap->summary.find("nmcli device status failed") != std::string::npos,
@@ -260,12 +271,16 @@ void run_posture_threat_tests() {
                hostile_snapshot.risk == DashboardRisk::Review,
            "labels hostile-criteria DEF CON readiness separately from the current posture risk");
 
-    const auto fixed_system_time = std::chrono::system_clock::time_point{std::chrono::seconds{1000}};
-    const auto fixed_monotonic_time = std::chrono::steady_clock::time_point{std::chrono::seconds{1000}};
-    const auto aged_snapshot = make_dashboard_snapshot(dashboard_source, 99U, fixed_system_time,
-                                                        fixed_monotonic_time);
-    expect(format_dashboard_age(aged_snapshot, fixed_monotonic_time + std::chrono::seconds{2}) == "2s old" &&
-               format_dashboard_age(aged_snapshot, fixed_monotonic_time + std::chrono::seconds{47}).starts_with("STALE") &&
+    const auto fixed_system_time =
+        std::chrono::system_clock::time_point{std::chrono::seconds{1000}};
+    const auto fixed_monotonic_time =
+        std::chrono::steady_clock::time_point{std::chrono::seconds{1000}};
+    const auto aged_snapshot =
+        make_dashboard_snapshot(dashboard_source, 99U, fixed_system_time, fixed_monotonic_time);
+    expect(format_dashboard_age(aged_snapshot, fixed_monotonic_time + std::chrono::seconds{2}) ==
+                   "2s old" &&
+               format_dashboard_age(aged_snapshot, fixed_monotonic_time + std::chrono::seconds{47})
+                   .starts_with("STALE") &&
                to_string(MenuDestination::Firewall) == "Firewall",
            "models snapshot freshness and recommendation destinations independently of rendering");
 
@@ -280,11 +295,14 @@ void run_posture_threat_tests() {
     }
     expect(output.str().find("DEF CON HOST DEFENSE") != std::string::npos &&
                output.str().find("Emergency isolation") != std::string::npos &&
-               output.str().find("MAIN > Firewall and connections > Firewall service state") != std::string::npos &&
+               output.str().find("MAIN > Firewall and connections > Firewall service state") !=
+                   std::string::npos &&
                output.str().find("Physical interface") != std::string::npos &&
                output.str().find("VPN route") != std::string::npos &&
-               output.str().find("->") == std::string::npos && output.str().find("\033[") == std::string::npos,
-           "renders workflow navigation without implying VPN routing or relying on color for severity meaning");
+               output.str().find("->") == std::string::npos &&
+               output.str().find("\033[") == std::string::npos,
+           "renders workflow navigation without implying VPN routing or relying on color for "
+           "severity meaning");
     expect(output.str().find("[ ? ] More") != std::string::npos &&
                output.str().find("Operational status") != std::string::npos &&
                output.str().find("Blockers, coverage gaps") == std::string::npos,
@@ -296,12 +314,49 @@ void run_posture_threat_tests() {
                json.find("\"intra_zone_forwarding\": true") != std::string::npos &&
                json.find("\"recommendation\"") != std::string::npos,
            "serializes the same structured dashboard snapshot as a versioned JSON contract");
+    auto untrusted_json_snapshot = prioritized_snapshot;
+    untrusted_json_snapshot.hostname = "host\"\nname";
+    untrusted_json_snapshot.recommendations.front().summary = "review\tpolicy";
+    const auto escaped_json = serialize_dashboard_snapshot_json(untrusted_json_snapshot);
+    expect(escaped_json.find("host\\\"\\nname") != std::string::npos &&
+               escaped_json.find("review\\tpolicy") != std::string::npos,
+           "escapes untrusted strings at the shared dashboard-v1 JSON boundary");
     const auto unavailable_json = serialize_dashboard_snapshot_json(make_dashboard_snapshot({}));
     expect(unavailable_json.find("\"active_status\": \"unavailable\", \"active\": null") !=
                    std::string::npos &&
                unavailable_json.find("\"uses_tunnel\": null") != std::string::npos &&
                unavailable_json.find("\"status\": \"unavailable\"") != std::string::npos,
-           "keeps unavailable firewall and VPN observations distinct from observed false values in JSON");
+           "keeps unavailable firewall and VPN observations distinct from observed false values in "
+           "JSON");
+
+    const auto json_v2 = serialize_dashboard_snapshot_json_v2(prioritized_snapshot);
+    expect(json_v2.find("\"schema\": \"ffc.dashboard.v2\"") != std::string::npos &&
+               json_v2.find("\"runtime_zones\":[{\"name\":\"public\"") != std::string::npos &&
+               json_v2.find("\"ports\":[\"443/tcp\",\"8443/tcp\"]") != std::string::npos &&
+               json_v2.find("\"active_policies\":[\"allow-host-ipv6\"]") != std::string::npos &&
+               json_v2.find("\"dimensions\":[\"ports\",\"forward\"]") != std::string::npos &&
+               json_v2.find("\"scope\":\"network_reachable\",\"process_name\":\"test-service\"") !=
+                   std::string::npos &&
+               json_v2.find("\"findings\": {\"blockers\":[") != std::string::npos &&
+               json_v2.find("\"recommendations\": [") != std::string::npos,
+           "serializes structured zones, drift, listeners, findings, and recommendations in "
+           "dashboard v2");
+    const auto unavailable_json_v2 =
+        serialize_dashboard_snapshot_json_v2(make_dashboard_snapshot({}));
+    expect(unavailable_json_v2.find("\"runtime_zones\":null") != std::string::npos &&
+               unavailable_json_v2.find("\"permanent_zones\":null") != std::string::npos &&
+               unavailable_json_v2.find("\"active_policies\":null") != std::string::npos &&
+               unavailable_json_v2.find("\"bindings\":null") != std::string::npos,
+           "uses null rather than false-safe empty structured inventories when v2 evidence is "
+           "unavailable");
+    FirewallState untrusted_v2 = prioritized;
+    untrusted_v2.sockets.listeners.front().process_name = "bad\"\nprocess";
+    untrusted_v2.runtime_zones["public"].rich_rules = {"rule family=\"ipv4\"\naccept"};
+    const auto untrusted_json_v2 =
+        serialize_dashboard_snapshot_json_v2(make_dashboard_snapshot(untrusted_v2));
+    expect(untrusted_json_v2.find("bad\\\"\\nprocess") != std::string::npos &&
+               untrusted_json_v2.find("rule family=\\\"ipv4\\\"\\naccept") != std::string::npos,
+           "escapes untrusted listener and policy strings at the dashboard-v2 JSON boundary");
 
     FirewallState untrusted_network_manager = dashboard_source;
     untrusted_network_manager.network_manager.available = false;

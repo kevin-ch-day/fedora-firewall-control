@@ -336,6 +336,36 @@ test_bounded_snapshot_timeout() {
     pass "bounded snapshot runner terminates a hung producer"
 }
 
+test_snapshot_argument_allowlist() {
+    local fixture status
+    fixture="$(/usr/bin/mktemp -d)" || fail_test "snapshot argument fixture can be created"
+    # The literal is the body of the fixture script.
+    # shellcheck disable=SC2016
+    /usr/bin/printf '%s\n' '#!/usr/bin/sh' 'printf "%s" "$1"' >"$fixture/ffc"
+    /usr/bin/chmod 700 "$fixture/ffc"
+    if /usr/bin/bash -c '
+        source "$1"
+        run_bounded_ffc_snapshot "$2" "$3" "$4" 2 128 --snapshot-json-v2
+    ' _ "$REPOSITORY_ROOT/scripts/setup-firewall-web-dev.sh" "$fixture/ffc" "$fixture/stdout" "$fixture/stderr"; then
+        status=0
+    else
+        status=$?
+    fi
+    assert_equal 0 "$status" "bounded snapshot runner accepts the fixed v2 argument"
+    assert_equal --snapshot-json-v2 "$(<"$fixture/stdout")" "bounded snapshot runner passes only the selected fixed v2 argument"
+    if /usr/bin/bash -c '
+        source "$1"
+        run_bounded_ffc_snapshot "$2" "$3" "$4" 2 128 --status
+    ' _ "$REPOSITORY_ROOT/scripts/setup-firewall-web-dev.sh" "$fixture/ffc" "$fixture/rejected" "$fixture/rejected-stderr"; then
+        status=0
+    else
+        status=$?
+    fi
+    assert_equal 2 "$status" "bounded snapshot runner rejects commands outside its argument allowlist"
+    [[ ! -s "$fixture/rejected" ]] || fail_test "rejected snapshot argument reached the executable"
+    /usr/bin/rm -rf -- "$fixture"
+}
+
 test_direct_system_update_requires_confirmation() {
     local script output status
     for script in setup-firewall-dev.sh setup-firewall-web-dev.sh; do
@@ -388,6 +418,7 @@ test_library_name_validation
 test_missing_web_workspace_stops_cleanly
 test_web_workspace_initializer
 test_bounded_snapshot_timeout
+test_snapshot_argument_allowlist
 test_direct_system_update_requires_confirmation
 test_non_fedora_node_provider_is_rejected
 

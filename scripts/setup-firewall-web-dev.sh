@@ -625,32 +625,26 @@ run_bounded_ffc_snapshot() {
     local ffc_bin="$1" stdout_file="$2" stderr_file="$3"
     local timeout_seconds="${4:-$FFC_SNAPSHOT_TIMEOUT_SECONDS}"
     local file_block_limit="${5:-$FFC_SNAPSHOT_FILE_BLOCK_LIMIT}"
+    local snapshot_argument="${6:---snapshot-json}"
     [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || return 2
     [[ "$file_block_limit" =~ ^[1-9][0-9]*$ ]] || return 2
+    [[ "$snapshot_argument" == --snapshot-json || "$snapshot_argument" == --snapshot-json-v2 ]] || return 2
     (
         ulimit -f "$file_block_limit"
         /usr/bin/timeout --signal=TERM --kill-after=2s "${timeout_seconds}s" \
-            "$ffc_bin" --snapshot-json
+            "$ffc_bin" "$snapshot_argument"
     ) >"$stdout_file" 2>"$stderr_file"
 }
 
-verify_ffc_snapshot() {
-    local candidate ffc_bin output_dir stdout_file stderr_file status diagnostic diagnostic_size snapshot_size
-    candidate="${FFC_BIN:-$REPOSITORY_ROOT/build/ffc}"
-    if [[ ! -e "$candidate" ]]; then
-        if [[ -n "${FFC_BIN:-}" ]]; then
-            die "FFC_BIN does not exist: $candidate"
-        else
-            warn "FFC binary is absent at $candidate; build it with ./scripts/build.sh to verify snapshot JSON."
-            return
-        fi
-    fi
-    ffc_bin="$(resolve_ffc_binary)" || return 1
+verify_ffc_snapshot_contract() {
+    local ffc_bin="$1" snapshot_argument="$2" schema_id="$3" schema_version="$4"
+    local output_dir stdout_file stderr_file status diagnostic diagnostic_size snapshot_size
     output_dir="$(/usr/bin/mktemp -d)" || die "Cannot create temporary FFC verification directory."
     stdout_file="$output_dir/stdout.json"
     stderr_file="$output_dir/stderr.log"
     set +e
-    run_bounded_ffc_snapshot "$ffc_bin" "$stdout_file" "$stderr_file"
+    run_bounded_ffc_snapshot "$ffc_bin" "$stdout_file" "$stderr_file" \
+        "$FFC_SNAPSHOT_TIMEOUT_SECONDS" "$FFC_SNAPSHOT_FILE_BLOCK_LIMIT" "$snapshot_argument"
     status=$?
     set -e
     diagnostic_size="$(/usr/bin/stat -c '%s' -- "$stderr_file" 2>/dev/null || printf 0)"
@@ -661,32 +655,39 @@ verify_ffc_snapshot() {
         if ((status == 124 || status == 137)); then
             /usr/bin/rm -f -- "$stdout_file" "$stderr_file"
             /usr/bin/rmdir -- "$output_dir" 2>/dev/null || true
-            die "FFC snapshot collection exceeded the ${FFC_SNAPSHOT_TIMEOUT_SECONDS}-second limit."
+            die "$schema_id collection exceeded the ${FFC_SNAPSHOT_TIMEOUT_SECONDS}-second limit."
         elif ((status == 153)); then
             /usr/bin/rm -f -- "$stdout_file" "$stderr_file"
             /usr/bin/rmdir -- "$output_dir" 2>/dev/null || true
-            die "FFC snapshot output exceeded the configured file-size limit."
+            die "$schema_id output exceeded the configured file-size limit."
         fi
         /usr/bin/rm -f -- "$stdout_file" "$stderr_file"
         /usr/bin/rmdir -- "$output_dir" 2>/dev/null || true
-        die "FFC could not produce snapshot JSON (exit $status)."
+        die "FFC could not produce $schema_id JSON (exit $status)."
     fi
     snapshot_size="$(/usr/bin/stat -c '%s' -- "$stdout_file")" || snapshot_size=0
-    if ! /usr/bin/jq -e '
+    if ! /usr/bin/jq -e --arg schema "$schema_id" --argjson version "$schema_version" '
         type == "object" and
-        .schema == "ffc.dashboard.v1" and
-        .schema_version == 1 and
+        .schema == $schema and
+        .schema_version == $version and
         (.snapshot_id | type == "number") and
         (.collected_at | type == "string") and
         (.status == "available" or .status == "partial" or .status == "unavailable") and
         (.risk | type == "object") and
         (.firewall | type == "object") and
         (.network | type == "object") and
-        (.evidence | type == "object")
+        (.evidence | type == "object") and
+        (if $version == 2 then
+            (.firewall.runtime_zones | type == "array" or . == null) and
+            (.firewall.permanent_zones | type == "array" or . == null) and
+            (.listeners.bindings | type == "array" or . == null) and
+            (.findings | type == "object") and
+            (.recommendations | type == "array")
+         else true end)
     ' "$stdout_file" >/dev/null; then
         /usr/bin/rm -f -- "$stdout_file" "$stderr_file"
         /usr/bin/rmdir -- "$output_dir" 2>/dev/null || true
-        die "FFC snapshot JSON violates the ffc.dashboard.v1 boundary contract."
+        die "FFC snapshot JSON violates the $schema_id boundary contract."
     fi
     if ! /usr/bin/rm -f -- "$stdout_file" "$stderr_file"; then
         warn "Could not remove temporary FFC verification files: $output_dir"
@@ -695,7 +696,23 @@ verify_ffc_snapshot() {
         warn "Could not remove temporary FFC verification directory: $output_dir"
     fi
     [[ -z "$diagnostic" ]] || warn "FFC produced stderr while snapshot JSON remained valid: $diagnostic"
-    ok "FFC snapshot JSON validates as ffc.dashboard.v1 ($snapshot_size bytes; bounded collection)"
+    ok "FFC snapshot JSON validates as $schema_id ($snapshot_size bytes; bounded collection)"
+}
+
+verify_ffc_snapshot() {
+    local candidate ffc_bin
+    candidate="${FFC_BIN:-$REPOSITORY_ROOT/build/ffc}"
+    if [[ ! -e "$candidate" ]]; then
+        if [[ -n "${FFC_BIN:-}" ]]; then
+            die "FFC_BIN does not exist: $candidate"
+        else
+            warn "FFC binary is absent at $candidate; build it with ./scripts/build.sh to verify snapshot JSON."
+            return
+        fi
+    fi
+    ffc_bin="$(resolve_ffc_binary)" || return 1
+    verify_ffc_snapshot_contract "$ffc_bin" --snapshot-json ffc.dashboard.v1 1
+    verify_ffc_snapshot_contract "$ffc_bin" --snapshot-json-v2 ffc.dashboard.v2 2
 }
 
 verify() {
@@ -820,11 +837,13 @@ package_status_summary() {
 }
 
 native_status_summary() {
-    local binary="${FFC_BIN:-$REPOSITORY_ROOT/build/ffc}" schema="$REPOSITORY_ROOT/schemas/dashboard-v1.schema.json"
+    local binary="${FFC_BIN:-$REPOSITORY_ROOT/build/ffc}"
+    local schema_v1="$REPOSITORY_ROOT/schemas/dashboard-v1.schema.json"
+    local schema_v2="$REPOSITORY_ROOT/schemas/dashboard-v2.schema.json"
     local canonical mode version='unknown'
     if [[ -n "${FFC_BIN:-}" && "$binary" != /* ]]; then
         printf '[REVIEW] FFC_BIN override must be an absolute path'
-    elif [[ -f "$binary" && -x "$binary" && -f "$schema" ]]; then
+    elif [[ -f "$binary" && -x "$binary" && -f "$schema_v1" && -f "$schema_v2" ]]; then
         canonical="$(/usr/bin/realpath -e -- "$binary" 2>/dev/null || true)"
         mode="$(/usr/bin/stat -c '%a' -- "$canonical" 2>/dev/null || true)"
         if [[ -z "$canonical" || -z "$mode" || $((8#$mode & 2)) -ne 0 ]]; then
@@ -835,11 +854,11 @@ native_status_summary() {
             version="$(/usr/bin/sed -n 's/^CMAKE_PROJECT_VERSION:STATIC=//p' "$REPOSITORY_ROOT/build/CMakeCache.txt" | /usr/bin/head -n 1)"
             [[ -n "$version" ]] || version='unknown'
         fi
-        printf '[READY] v%s executable · dashboard-v1 schema present' "$version"
+        printf '[READY] v%s executable · dashboard-v1/v2 schemas present' "$version"
     elif [[ ! -f "$binary" || ! -x "$binary" ]]; then
         printf '[ACTION] FFC executable missing · run ./scripts/build.sh'
     else
-        printf '[ACTION] dashboard-v1 schema missing'
+        printf '[ACTION] dashboard-v1 or dashboard-v2 schema missing'
     fi
 }
 

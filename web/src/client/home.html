@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark">
+    <title>FFC // Home</title><link rel="stylesheet" href="/assets/dashboard.css"><script src="/assets/section-page.js" type="module"></script>
+  </head>
+  <body data-page="home">
+    <div class="scanline" aria-hidden="true"></div>
+    <aside class="sidebar">
+      <a class="sidebar-brand" href="/"><strong>FFC</strong><span>LOCAL CONSOLE</span></a>
+      <nav aria-label="Primary navigation">
+        <a href="/" aria-current="page"><span>00</span>Home</a><a href="/overview"><span>01</span>Overview</a><a href="/firewall"><span>02</span>Firewall</a><a href="/network"><span>03</span>Network</a><a href="/exposure"><span>04</span>Exposure</a><a href="/evidence"><span>05</span>Evidence</a><a href="/session"><span>06</span>Session</a>
+      </nav>
+      <div class="sidebar-boundary"><span>BOUNDARY</span><strong>127.0.0.1</strong><small>READ ONLY</small></div>
+    </aside>
+    <header class="masthead home-masthead">
+      <div><p class="eyebrow">FEDORA FIREWALL CONTROL</p><h1>Local operations<span class="cursor" aria-hidden="true">_</span></h1></div>
+      <div class="header-actions"><div class="connection" id="connection-state" role="status" aria-live="polite"><span class="pulse"></span><span>COLLECTING</span></div><button id="refresh" type="button">Refresh posture</button></div>
+    </header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden><strong>SNAPSHOT UNAVAILABLE</strong><span id="error-message">Current posture could not be collected.</span></div>
+      <section class="home-hero panel">
+        <div><p class="section-label">LOCAL READ-ONLY CONTROL PLANE</p><h2 id="home-risk">Loading current posture…</h2><p id="home-recommendation">Waiting for validated native evidence.</p><a id="home-next-action" class="primary-link" href="/overview">Open overview →</a></div>
+        <dl class="home-status"><div><dt>Firewall</dt><dd id="home-firewall">—</dd></div><div><dt>Evidence</dt><dd id="home-evidence">—</dd></div><div><dt>Interface</dt><dd id="home-interface">—</dd></div></dl>
+      </section>
+      <section class="landing-grid" aria-label="Operations areas">
+        <a class="panel landing-card" href="/overview"><span>01</span><h2>Posture overview</h2><p>Assessment, firewall state, exposure, operator guidance, and snapshot tools.</p><b>OPEN OVERVIEW →</b></a>
+        <a class="panel landing-card" href="/firewall"><span>02</span><h2>Firewall</h2><p>Firewalld service, zone trust, modeled rule surface, and policy evidence.</p><b>OPEN FIREWALL →</b></a>
+        <a class="panel landing-card" href="/network"><span>03</span><h2>Network path</h2><p>Interface, zone, tunnel detection, VPN route, DNS, and kill-switch evidence.</p><b>OPEN NETWORK →</b></a>
+        <a class="panel landing-card" href="/exposure"><span>04</span><h2>Exposure</h2><p>Network-reachable listeners, configured ingress, and current attack-surface assessment.</p><b>OPEN EXPOSURE →</b></a>
+        <a class="panel landing-card" href="/evidence"><span>05</span><h2>Evidence coverage</h2><p>Collected, partial, unavailable, and explicitly unassessed evidence sources.</p><b>OPEN EVIDENCE →</b></a>
+        <a class="panel landing-card" href="/session"><span>06</span><h2>Session watch</h2><p>Tab-local comparison of meaningful posture changes across repeated snapshots.</p><b>OPEN SESSION →</b></a>
+      </section>
+    </main>
+    <footer><div><span id="hostname">local host</span> · FFC <span id="app-version">—</span></div><div>Snapshot <span id="snapshot-id">—</span> · <span id="snapshot-source">—</span> · <time id="collected-at">not collected</time></div><div class="read-only">HOME // LOOPBACK ONLY</div></footer>
+  </body>
+</html>

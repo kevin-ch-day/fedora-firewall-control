@@ -24,6 +24,7 @@ test("concurrent requests share one native collection", async () => {
   const service = new SnapshotService(collector);
   const first = service.getSnapshot();
   const second = service.getSnapshot();
+  assert.deepEqual(service.status(), { cache: "empty", collectionInFlight: true });
   release?.();
   const [firstResult, secondResult] = await Promise.all([first, second]);
   assert.equal(calls, 1);
@@ -42,11 +43,33 @@ test("fresh cache avoids collection and expiry triggers a new collection", async
     },
   };
   const service = new SnapshotService(collector, { cacheTtlMs: 2_000, clock: () => now });
+  assert.deepEqual(service.status(), { cache: "empty", collectionInFlight: false });
   assert.equal((await service.getSnapshot()).source, "fresh");
+  assert.deepEqual(service.status(), { cache: "fresh", collectionInFlight: false });
   now += 1_999;
   assert.equal((await service.getSnapshot()).source, "cache");
   assert.equal(calls, 1);
   now += 1;
+  assert.deepEqual(service.status(), { cache: "expired", collectionInFlight: false });
+  assert.equal((await service.getSnapshot()).source, "fresh");
+  assert.equal(calls, 2);
+});
+
+test("clock rollback expires cached evidence instead of extending its lifetime", async () => {
+  let calls = 0;
+  let now = 5_000;
+  const service = new SnapshotService(
+    {
+      collect: async () => {
+        calls += 1;
+        return validSnapshot();
+      },
+    },
+    { cacheTtlMs: 2_000, clock: () => now },
+  );
+  await service.getSnapshot();
+  now = 4_999;
+  assert.equal(service.status().cache, "expired");
   assert.equal((await service.getSnapshot()).source, "fresh");
   assert.equal(calls, 2);
 });

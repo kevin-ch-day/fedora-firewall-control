@@ -108,6 +108,7 @@ set(FFC_CORE_SOURCES
   src/security/threat_assessment.cpp
   src/ui/dashboard.cpp
   src/ui/dashboard_json.cpp
+  src/ui/dashboard_json_v2.cpp
   src/ui/dashboard_state.cpp
   src/ui/log_renderer.cpp
   src/ui/network_diagnostics_renderer.cpp
@@ -193,6 +194,10 @@ if(BUILD_TESTING)
       ERROR_QUIET
     )
     if(FFC_NODE_VERSION MATCHES "^v24\\.")
+      configure_file(tests/verify_dashboard_json_v2.cmake.in
+                     ${CMAKE_CURRENT_BINARY_DIR}/verify_dashboard_json_v2.cmake @ONLY)
+      add_test(NAME ffc_dashboard_json_v2_contract
+               COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/verify_dashboard_json_v2.cmake)
       add_test(NAME ffc_web_check COMMAND "${FFC_NPM_PROGRAM}" run check)
       set_tests_properties(ffc_web_check PROPERTIES WORKING_DIRECTORY "${FFC_WEB_DIR}")
       message(STATUS "Web checks enabled with ${FFC_NODE_VERSION}")

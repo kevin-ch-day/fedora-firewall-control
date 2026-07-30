@@ -15,12 +15,19 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 export class SnapshotValidator {
   readonly #validate: ValidateFunction;
+  readonly #expectedSchemaId: string;
 
-  private constructor(validate: ValidateFunction) {
+  private constructor(validate: ValidateFunction, expectedSchemaId: string) {
     this.#validate = validate;
+    this.#expectedSchemaId = expectedSchemaId;
   }
 
-  public static async create(schemaPath = DASHBOARD_SCHEMA_PATH): Promise<SnapshotValidator> {
+  public static async create(options: {
+    schemaPath?: string;
+    expectedSchemaId?: string;
+  } = {}): Promise<SnapshotValidator> {
+    const schemaPath = options.schemaPath ?? DASHBOARD_SCHEMA_PATH;
+    const expectedSchemaId = options.expectedSchemaId ?? SNAPSHOT_SCHEMA_ID;
     let schema: unknown;
     try {
       schema = JSON.parse(await readFile(schemaPath, "utf8")) as unknown;
@@ -37,7 +44,7 @@ export class SnapshotValidator {
     }
     try {
       const ajv = new Ajv2020({ allErrors: false, strict: true });
-      return new SnapshotValidator(ajv.compile(schema));
+      return new SnapshotValidator(ajv.compile(schema), expectedSchemaId);
     } catch (error: unknown) {
       throw new ApiError("server_initialization_failed", 500, {
         cause: error,
@@ -53,7 +60,7 @@ export class SnapshotValidator {
     } catch (error: unknown) {
       throw new ApiError("ffc_malformed_output", 502, { cause: error });
     }
-    if (!this.#validate(parsed) || !isObject(parsed) || parsed["schema"] !== SNAPSHOT_SCHEMA_ID) {
+    if (!this.#validate(parsed) || !isObject(parsed) || parsed["schema"] !== this.#expectedSchemaId) {
       throw new ApiError("ffc_schema_invalid", 502);
     }
     return parsed as ValidatedSnapshot;

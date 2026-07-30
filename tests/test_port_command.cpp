@@ -20,6 +20,8 @@ void run_port_command_tests() {
     expect(command_action_name(CommandAction::ThreatAssessment) == "threat-assessment" &&
                parse_command_line({"--log-analysis"}).action == CommandAction::LogAnalysis &&
                parse_command_line({"--snapshot-json"}).action == CommandAction::SnapshotJson &&
+               parse_command_line({"--snapshot-json-v2"}).action == CommandAction::SnapshotJsonV2 &&
+               command_action_name(CommandAction::SnapshotJsonV2) == "snapshot-json-v2" &&
                parse_command_line({"--network-diagnostics", "--unknown"}).action == CommandAction::Invalid,
            "parses typed commands without retaining raw arguments");
 }

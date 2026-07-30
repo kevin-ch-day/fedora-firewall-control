@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark">
+    <title>FFC // Session Watch</title><link rel="stylesheet" href="/assets/dashboard.css"><script src="/assets/section-page.js" type="module"></script>
+  </head>
+  <body data-page="session">
+    <div class="scanline" aria-hidden="true"></div>
+    <aside class="sidebar"><a class="sidebar-brand" href="/"><strong>FFC</strong><span>LOCAL CONSOLE</span></a><nav aria-label="Primary navigation"><a href="/"><span>00</span>Home</a><a href="/overview"><span>01</span>Overview</a><a href="/firewall"><span>02</span>Firewall</a><a href="/network"><span>03</span>Network</a><a href="/exposure"><span>04</span>Exposure</a><a href="/evidence"><span>05</span>Evidence</a><a href="/session" aria-current="page"><span>06</span>Session</a></nav><div class="sidebar-boundary"><span>BOUNDARY</span><strong>127.0.0.1</strong><small>READ ONLY</small></div></aside>
+    <header class="masthead page-masthead"><div><p class="eyebrow">FFC // IN-MEMORY MONITOR</p><h1>Session watch<span class="cursor" aria-hidden="true">_</span></h1></div><div class="header-actions"><div class="connection" id="connection-state" role="status" aria-live="polite"><span class="pulse"></span><span>COLLECTING</span></div><button id="refresh" type="button">Check now</button></div></header>
+    <main>
+      <div id="error-banner" class="error-banner" role="alert" hidden><strong>SNAPSHOT UNAVAILABLE</strong><span id="error-message">The current posture could not be checked.</span></div>
+      <section class="operation-strip panel"><div><span>Risk level</span><strong id="session-risk">—</strong></div><div><span>Evidence</span><strong id="session-evidence">—</strong></div><div><span>Interface</span><strong id="session-interface">—</strong></div><div><span>Tunnel</span><strong id="session-tunnel">—</strong></div></section>
+      <article class="panel card session-card session-page-card"><div class="card-heading"><span>01</span><h2>Observed changes</h2><b id="session-state" class="session-state">BASELINE PENDING</b></div><p class="session-intro">Compares 14 meaningful posture signals every 30 seconds while this page is visible. History exists only in this browser tab and is discarded when it closes.</p><ul id="change-list" class="change-list" aria-live="polite"><li><time>NOW</time><span>Waiting for the first validated snapshot.</span></li></ul></article>
+      <aside class="panel limitation-panel session-boundary"><p class="section-label">SESSION BOUNDARY</p><h2>Change is evidence, not attribution</h2><p>A changed listener count, route, or firewall rule deserves review but does not by itself prove hostile activity or identify an attacker.</p></aside>
+    </main>
+    <footer><div><span id="hostname">local host</span> · FFC <span id="app-version">—</span></div><div>Snapshot <span id="snapshot-id">—</span> · <span id="snapshot-source">—</span> · <time id="collected-at">not collected</time></div><div class="read-only">TAB-LOCAL // [R] CHECK NOW</div></footer>
+  </body>
+</html>

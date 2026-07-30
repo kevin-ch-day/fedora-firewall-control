@@ -1,0 +1,26 @@
+execute_process(
+  COMMAND "@CMAKE_CURRENT_BINARY_DIR@/ffc" --snapshot-json-v2
+  OUTPUT_VARIABLE snapshot
+  ERROR_VARIABLE diagnostics
+  RESULT_VARIABLE snapshot_result
+)
+if(NOT snapshot_result EQUAL 0)
+  message(FATAL_ERROR "dashboard-v2 snapshot command failed: ${diagnostics}")
+endif()
+if(NOT diagnostics STREQUAL "")
+  message(FATAL_ERROR "dashboard-v2 snapshot command wrote diagnostics to stderr: ${diagnostics}")
+endif()
+set(snapshot_path "@CMAKE_CURRENT_BINARY_DIR@/dashboard-contract-v2.json")
+file(WRITE "${snapshot_path}" "${snapshot}")
+execute_process(
+  COMMAND "@FFC_NODE_PROGRAM@"
+          "@CMAKE_CURRENT_SOURCE_DIR@/web/scripts/validate-dashboard-v2.mjs"
+          "@CMAKE_CURRENT_SOURCE_DIR@/schemas/dashboard-v2.schema.json"
+          "${snapshot_path}"
+  RESULT_VARIABLE validation_result
+  OUTPUT_QUIET
+  ERROR_VARIABLE validation_error
+)
+if(NOT validation_result EQUAL 0)
+  message(FATAL_ERROR "dashboard-v2 JSON contract validation failed: ${validation_error}")
+endif()

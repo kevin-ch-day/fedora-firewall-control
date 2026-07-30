@@ -15,6 +15,7 @@ import { ApiError, sanitizeDiagnostic } from "./errors.js";
 const execFile = promisify(execFileCallback);
 
 export interface FfcRunnerOptions {
+  readonly snapshotArgument?: SnapshotArgument;
   readonly timeoutMs?: number;
   readonly maxStdoutBytes?: number;
   readonly maxStderrBytes?: number;
@@ -22,6 +23,8 @@ export interface FfcRunnerOptions {
   readonly environment?: NodeJS.ProcessEnv;
   readonly diagnosticLogger?: (message: string) => void;
 }
+
+export type SnapshotArgument = "--snapshot-json" | "--snapshot-json-v2";
 
 export interface FfcRunResult {
   readonly stdout: string;
@@ -87,9 +90,13 @@ export async function resolveFfcExecutable(candidate: string): Promise<string> {
 
   try {
     const metadata = await stat(canonical);
-    if (!metadata.isFile() || (metadata.mode & 0o002) !== 0) {
+    const effectiveUid = process.geteuid?.();
+    const trustedOwner =
+      effectiveUid === undefined || metadata.uid === effectiveUid || metadata.uid === 0;
+    if (!metadata.isFile() || (metadata.mode & 0o022) !== 0 || !trustedOwner) {
       throw new ApiError("ffc_unavailable", 503, {
-        diagnostic: "FFC executable is not a regular trusted file.",
+        diagnostic:
+          "FFC executable must be a regular file owned by the current user or root and not writable by group or other.",
       });
     }
     await access(canonical, fsConstants.X_OK);
@@ -114,6 +121,7 @@ export class FfcRunner {
   readonly #repositoryRoot: string;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #diagnosticLogger: (message: string) => void;
+  readonly #snapshotArgument: SnapshotArgument;
 
   public constructor(executable: string, options: FfcRunnerOptions = {}) {
     this.#executable = executable;
@@ -123,11 +131,12 @@ export class FfcRunner {
     this.#repositoryRoot = options.repositoryRoot ?? REPOSITORY_ROOT;
     this.#environment = boundedEnvironment(options.environment ?? process.env);
     this.#diagnosticLogger = options.diagnosticLogger ?? ((message) => console.error(message));
+    this.#snapshotArgument = options.snapshotArgument ?? "--snapshot-json";
   }
 
   public async runSnapshot(): Promise<FfcRunResult> {
     try {
-      const result = await execFile(this.#executable, ["--snapshot-json"], {
+      const result = await execFile(this.#executable, [this.#snapshotArgument], {
         cwd: this.#repositoryRoot,
         encoding: "utf8",
         env: this.#environment,

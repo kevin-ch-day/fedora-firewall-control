@@ -28,6 +28,20 @@ process.stdout.write(${JSON.stringify(JSON.stringify(validSnapshot()))});
   );
 });
 
+test("v2 runner invokes only the fixed structured snapshot argument", async (context) => {
+  const fixture = await createExecutableFixture(`
+if (process.argv.length !== 3 || process.argv[2] !== "--snapshot-json-v2") process.exit(71);
+process.stdout.write("{}");
+`);
+  context.after(fixture.cleanup);
+  const result = await new FfcRunner(fixture.executable, {
+    snapshotArgument: "--snapshot-json-v2",
+    repositoryRoot: fixture.directory,
+    diagnosticLogger: () => undefined,
+  }).runSnapshot();
+  assert.equal(result.stdout, "{}");
+});
+
 test("runner distinguishes nonzero exits", async (context) => {
   const fixture = await createExecutableFixture('process.stderr.write("private-native-detail"); process.exit(9);');
   context.after(fixture.cleanup);
@@ -92,7 +106,7 @@ test("runner enforces stdout and stderr limits", async (context) => {
   );
 });
 
-test("executable resolution rejects missing, relative, non-executable, and world-writable files", async (context) => {
+test("executable resolution rejects missing, relative, non-executable, and untrusted writable files", async (context) => {
   const fixture = await createExecutableFixture("process.stdout.write('{}');");
   context.after(fixture.cleanup);
   await assert.rejects(resolveFfcExecutable("ffc"));
@@ -103,5 +117,7 @@ test("executable resolution rejects missing, relative, non-executable, and world
     (error: unknown) => error instanceof ApiError && error.code === "ffc_permission_denied",
   );
   await chmod(fixture.executable, 0o707);
+  await assert.rejects(resolveFfcExecutable(fixture.executable));
+  await chmod(fixture.executable, 0o770);
   await assert.rejects(resolveFfcExecutable(fixture.executable));
 });

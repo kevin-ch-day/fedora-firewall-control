@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ffc.local/schemas/dashboard-v2.schema.json",
+  "title": "FFC Dashboard Snapshot v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "snapshot_id", "hostname", "application_version", "collected_at", "age_ms", "stale", "status", "assessment", "risk", "firewall", "listeners", "network", "findings", "recommendations", "recommendation", "evidence"],
+  "properties": {
+    "schema": {"const": "ffc.dashboard.v2"},
+    "schema_version": {"const": 2},
+    "snapshot_id": {"type": "integer", "minimum": 1},
+    "hostname": {"type": "string"},
+    "application_version": {"type": "string"},
+    "collected_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "age_ms": {"type": "integer", "minimum": 0},
+    "stale": {"type": "boolean"},
+    "status": {"$ref": "#/$defs/evidenceStatus"},
+    "assessment": {"$ref": "#/$defs/assessment"},
+    "risk": {"$ref": "#/$defs/risk"},
+    "firewall": {"$ref": "#/$defs/firewall"},
+    "listeners": {"$ref": "#/$defs/listeners"},
+    "network": {"$ref": "#/$defs/network"},
+    "findings": {"$ref": "#/$defs/findings"},
+    "recommendations": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "recommendation": {"$ref": "#/$defs/finding"},
+    "evidence": {"$ref": "#/$defs/evidence"}
+  },
+  "$defs": {
+    "evidenceStatus": {"type": "string", "enum": ["available", "partial", "unavailable"]},
+    "nullableString": {"type": ["string", "null"]},
+    "nullableBoolean": {"type": ["boolean", "null"]},
+    "nullableInteger": {"type": ["integer", "null"], "minimum": 0},
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "defcon_readiness"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["normal", "hostile"]},
+        "defcon_readiness": {"type": "string", "enum": ["not_evaluated", "ready", "not_ready"]}
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "blockers", "review_items", "coverage_gaps"],
+      "properties": {
+        "level": {"type": "string", "enum": ["ready", "review_required", "blocked"]},
+        "blockers": {"type": "integer", "minimum": 0},
+        "review_items": {"type": "integer", "minimum": 0},
+        "coverage_gaps": {"type": "integer", "minimum": 0}
+      }
+    },
+    "zone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "applicable", "active", "target", "interfaces", "sources", "services", "ports", "protocols", "source_ports", "rich_rules", "forward_ports", "masquerade", "forward", "details_valid"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "applicable": {"type": "boolean"},
+        "active": {"type": "boolean"},
+        "target": {"type": "string"},
+        "interfaces": {"$ref": "#/$defs/stringArray"},
+        "sources": {"$ref": "#/$defs/stringArray"},
+        "services": {"$ref": "#/$defs/stringArray"},
+        "ports": {"$ref": "#/$defs/stringArray"},
+        "protocols": {"$ref": "#/$defs/stringArray"},
+        "source_ports": {"$ref": "#/$defs/stringArray"},
+        "rich_rules": {"$ref": "#/$defs/stringArray"},
+        "forward_ports": {"$ref": "#/$defs/stringArray"},
+        "masquerade": {"type": "boolean"},
+        "forward": {"type": "boolean"},
+        "details_valid": {"type": "boolean"}
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "runtime_present", "permanent_present", "dimensions"],
+      "properties": {
+        "zone": {"type": "string", "minLength": 1},
+        "runtime_present": {"type": "boolean"},
+        "permanent_present": {"type": "boolean"},
+        "dimensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "enum": ["runtime_missing", "permanent_missing", "target", "sources", "services", "ports", "protocols", "source_ports", "rich_rules", "forward_ports", "masquerade", "forward", "details_valid"]}
+        }
+      }
+    },
+    "firewall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active_status", "active", "enabled_status", "enabled", "default_zone_status", "default_zone", "runtime_zones_status", "permanent_zones_status", "active_policies_status", "inbound_port_rules", "protocol_rules", "rich_rules", "intra_zone_forwarding", "runtime_zones", "permanent_zones", "active_policies", "runtime_permanent_drift"],
+      "properties": {
+        "active_status": {"$ref": "#/$defs/evidenceStatus"},
+        "active": {"$ref": "#/$defs/nullableBoolean"},
+        "enabled_status": {"$ref": "#/$defs/evidenceStatus"},
+        "enabled": {"$ref": "#/$defs/nullableBoolean"},
+        "default_zone_status": {"$ref": "#/$defs/evidenceStatus"},
+        "default_zone": {"$ref": "#/$defs/nullableString"},
+        "runtime_zones_status": {"$ref": "#/$defs/evidenceStatus"},
+        "permanent_zones_status": {"$ref": "#/$defs/evidenceStatus"},
+        "active_policies_status": {"$ref": "#/$defs/evidenceStatus"},
+        "inbound_port_rules": {"$ref": "#/$defs/nullableInteger"},
+        "protocol_rules": {"$ref": "#/$defs/nullableInteger"},
+        "rich_rules": {"$ref": "#/$defs/nullableInteger"},
+        "intra_zone_forwarding": {"$ref": "#/$defs/nullableBoolean"},
+        "runtime_zones": {"oneOf": [{"type": "array", "items": {"$ref": "#/$defs/zone"}}, {"type": "null"}]},
+        "permanent_zones": {"oneOf": [{"type": "array", "items": {"$ref": "#/$defs/zone"}}, {"type": "null"}]},
+        "active_policies": {"oneOf": [{"$ref": "#/$defs/stringArray"}, {"type": "null"}]},
+        "runtime_permanent_drift": {"oneOf": [{"type": "array", "items": {"$ref": "#/$defs/drift"}}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"active_status": {"const": "unavailable"}}, "required": ["active_status"]}, "then": {"properties": {"active": {"type": "null"}}}, "else": {"properties": {"active": {"type": "boolean"}}}},
+        {"if": {"properties": {"enabled_status": {"const": "unavailable"}}, "required": ["enabled_status"]}, "then": {"properties": {"enabled": {"type": "null"}}}, "else": {"properties": {"enabled": {"type": "boolean"}}}},
+        {"if": {"properties": {"default_zone_status": {"const": "unavailable"}}, "required": ["default_zone_status"]}, "then": {"properties": {"default_zone": {"type": "null"}}}, "else": {"properties": {"default_zone": {"type": "string"}}}},
+        {"if": {"properties": {"runtime_zones_status": {"const": "unavailable"}}, "required": ["runtime_zones_status"]}, "then": {"properties": {"runtime_zones": {"type": "null"}, "inbound_port_rules": {"type": "null"}, "protocol_rules": {"type": "null"}, "rich_rules": {"type": "null"}, "intra_zone_forwarding": {"type": "null"}}}, "else": {"properties": {"runtime_zones": {"type": "array"}, "inbound_port_rules": {"type": "integer"}, "protocol_rules": {"type": "integer"}, "rich_rules": {"type": "integer"}, "intra_zone_forwarding": {"type": "boolean"}}}},
+        {"if": {"properties": {"permanent_zones_status": {"const": "unavailable"}}, "required": ["permanent_zones_status"]}, "then": {"properties": {"permanent_zones": {"type": "null"}}}, "else": {"properties": {"permanent_zones": {"type": "array"}}}},
+        {"if": {"properties": {"active_policies_status": {"const": "unavailable"}}, "required": ["active_policies_status"]}, "then": {"properties": {"active_policies": {"type": "null"}}}, "else": {"properties": {"active_policies": {"type": "array"}}}},
+        {"if": {"anyOf": [{"properties": {"runtime_zones_status": {"const": "unavailable"}}, "required": ["runtime_zones_status"]}, {"properties": {"permanent_zones_status": {"const": "unavailable"}}, "required": ["permanent_zones_status"]}]}, "then": {"properties": {"runtime_permanent_drift": {"type": "null"}}}, "else": {"properties": {"runtime_permanent_drift": {"type": "array"}}}}
+      ]
+    },
+    "listener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "endpoint", "scope", "process_name"],
+      "properties": {
+        "protocol": {"type": "string", "enum": ["tcp", "udp"]},
+        "endpoint": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "enum": ["loopback", "multicast", "network_reachable"]},
+        "process_name": {"$ref": "#/$defs/nullableString"}
+      }
+    },
+    "listeners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "tcp_udp_listeners", "reachable_bindings", "process_metadata_requested", "bindings"],
+      "properties": {
+        "status": {"$ref": "#/$defs/evidenceStatus"},
+        "tcp_udp_listeners": {"$ref": "#/$defs/nullableInteger"},
+        "reachable_bindings": {"$ref": "#/$defs/nullableInteger"},
+        "process_metadata_requested": {"type": "boolean"},
+        "bindings": {"oneOf": [{"type": "array", "items": {"$ref": "#/$defs/listener"}}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "unavailable"}}, "required": ["status"]}, "then": {"properties": {"tcp_udp_listeners": {"type": "null"}, "reachable_bindings": {"type": "null"}, "bindings": {"type": "null"}}}, "else": {"properties": {"tcp_udp_listeners": {"type": "integer"}, "reachable_bindings": {"type": "integer"}, "bindings": {"type": "array"}}}}
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "uses_tunnel", "diagnostic"],
+      "properties": {"status": {"$ref": "#/$defs/evidenceStatus"}, "uses_tunnel": {"$ref": "#/$defs/nullableBoolean"}, "diagnostic": {"type": "string"}}
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physical_interface", "zone", "network_manager", "tunnel_detection", "vpn_route", "dns_path", "kill_switch"],
+      "properties": {
+        "physical_interface": {"$ref": "#/$defs/nullableString"},
+        "zone": {"$ref": "#/$defs/nullableString"},
+        "network_manager": {"type": "object", "additionalProperties": false, "required": ["device_inventory_status", "profile_inventory_status", "profile", "autoconnect", "diagnostic"], "properties": {"device_inventory_status": {"$ref": "#/$defs/evidenceStatus"}, "profile_inventory_status": {"$ref": "#/$defs/evidenceStatus"}, "profile": {"$ref": "#/$defs/nullableString"}, "autoconnect": {"$ref": "#/$defs/nullableBoolean"}, "diagnostic": {"type": "string"}}},
+        "tunnel_detection": {"type": "object", "additionalProperties": false, "required": ["status", "tunnel_interface"], "properties": {"status": {"$ref": "#/$defs/evidenceStatus"}, "tunnel_interface": {"$ref": "#/$defs/nullableString"}}},
+        "vpn_route": {"$ref": "#/$defs/verification"},
+        "dns_path": {"$ref": "#/$defs/verification"},
+        "kill_switch": {"type": "object", "additionalProperties": false, "required": ["status", "enabled", "diagnostic"], "properties": {"status": {"$ref": "#/$defs/evidenceStatus"}, "enabled": {"$ref": "#/$defs/nullableBoolean"}, "diagnostic": {"type": "string"}}}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "category", "summary", "destination"],
+      "properties": {
+        "id": {"type": "string"},
+        "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "information"]},
+        "category": {"type": "string", "enum": ["isolation", "firewall_failure", "firewall_exposure", "listener_exposure", "configuration_change", "evidence_gap", "hygiene"]},
+        "summary": {"type": "string"},
+        "destination": {"type": "string", "pattern": "^[a-z]+(\\.[a-z_]+)*$"}
+      }
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockers", "review_items", "coverage_gaps"],
+      "properties": {
+        "blockers": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "review_items": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "coverage_gaps": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "components"],
+      "properties": {
+        "status": {"$ref": "#/$defs/evidenceStatus"},
+        "components": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["component", "status", "detail"], "properties": {"component": {"type": "string"}, "status": {"$ref": "#/$defs/evidenceStatus"}, "detail": {"type": "string"}}}}
+      }
+    },
+    "stringArray": {"type": "array", "items": {"type": "string"}}
+  }
+}
