@@ -24,6 +24,39 @@ ctest --test-dir build --output-on-failure
 
 On Fedora, install the minimal build/runtime dependencies with `./scripts/setup-firewall-dev.sh`, then build and test from any directory with `./scripts/build.sh`.
 
+### Local web dashboard
+
+The root-level launcher starts one foreground, loopback-only, read-only web
+server. The server invokes the repository-local native binary for snapshots; it
+does not start a second persistent native process.
+
+```text
+run.sh
+  -> Node web server
+      -> build/ffc --snapshot-json
+          -> read-only host inspection
+```
+
+Keep build and run phases separate:
+
+```bash
+# After native source changes
+./scripts/build.sh
+
+# After web source or dependency changes
+cd web
+npm run check
+cd ..
+
+# Normal use
+./run.sh
+```
+
+`./run.sh --check` verifies the prebuilt native binary, compiled web server,
+and Node.js 24 without starting a listener. The launcher never installs,
+builds, changes firewall policy, or opens a browser. Press Ctrl-C to stop the
+foreground dashboard at `http://127.0.0.1:8787/`.
+
 ### CMake workflows
 
 The traditional `cmake -S . -B build -G Ninja -DBUILD_TESTING=ON` workflow remains supported. `CMakePresets.json` also provides repeatable build trees. The sanitizer preset uses Clang so it has a self-contained sanitizer runtime on Fedora:
